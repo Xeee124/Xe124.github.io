@@ -25,12 +25,6 @@ let minVisible = 0.001;
 let sampleRate = 44100;
 
 // スムージングモード
-// 0: OFF（バー表示）
-// 1: 線形補間
-// 2: Catmull-Rom スプライン
-// 3: Cubic スプライン（SPAN風）
-// 4: 移動平均
-// 5: Gaussian スムージング
 let smoothingMode = 0;
 
 // アナライザーモード
@@ -42,10 +36,14 @@ let splineM = [];
 // オレンジカラー定義
 const ORANGE = [255, 120, 0];
 
+// UI初期化完了フラグ
+let uiInitialized = false;
+
 if (typeof Math.log10 !== 'function') {
   Math.log10 = function(x) { return Math.log(x) / Math.LN10; };
 }
 
+// ========== p5.js setup（ビジュアライザー初期化のみ） ==========
 function setup() {
   y = windowHeight;
   x = windowWidth;
@@ -53,7 +51,6 @@ function setup() {
   canvas.parent('visualizer-canvas');
 
   fft = new p5.FFT(0.8, 8192);
-
   analyzer = new p5.Amplitude();
   analyzer.setInput();
 
@@ -61,39 +58,24 @@ function setup() {
   prevRMS = new Array(n).fill(0);
   vel = new Array(n).fill(0);
   splineM = new Array(n).fill(0);
-
-  setupUI();
+  
+  // UI初期化はここでは行わない（DOMContentLoadedで実行）
 }
 
 function draw() {
   background(10, 10, 10);
   Audio();
   
-  // スムージングモードに応じて描画を切り替え
   switch (smoothingMode) {
-    case 0:
-      WhiteRect();
-      break;
-    case 1:
-      drawLinearInterpolation();
-      break;
-    case 2:
-      drawCatmullRom();
-      break;
-    case 3:
-      drawCubicSpline();
-      break;
-    case 4:
-      drawMovingAverage();
-      break;
-    case 5:
-      drawGaussianSmooth();
-      break;
-    default:
-      WhiteRect();
+    case 0: WhiteRect(); break;
+    case 1: drawLinearInterpolation(); break;
+    case 2: drawCatmullRom(); break;
+    case 3: drawCubicSpline(); break;
+    case 4: drawMovingAverage(); break;
+    case 5: drawGaussianSmooth(); break;
+    default: WhiteRect();
   }
   
-  // アナライザーモードならメモリを描画
   if (analyzerMode) {
     drawAnalyzerOverlay();
   }
@@ -109,10 +91,6 @@ function windowResized() {
 
 function freqToBin(freq, fftSize, sr) {
   return Math.round(freq * fftSize / sr);
-}
-
-function binToFreq(bin, fftSize, sr) {
-  return bin * sr / fftSize;
 }
 
 function Audio() {
@@ -184,7 +162,6 @@ function Audio() {
       vel[i] = 0;
     }
     
-    // Cubic Spline用の二次導関数を計算
     if (smoothingMode === 3) {
       computeCubicSplineM();
     }
@@ -223,7 +200,6 @@ function WhiteRect() {
   }
 }
 
-// 線形補間描画
 function drawLinearInterpolation() {
   drawingContext.shadowBlur = Glow;
   drawingContext.shadowColor = color(...ORANGE, Alpher);
@@ -232,7 +208,6 @@ function drawLinearInterpolation() {
   strokeWeight(2);
   noFill();
   
-  // 上半分
   beginShape();
   for (let i = 0; i < n; i++) {
     let xPos = (i + 0.5) * (width / n);
@@ -241,7 +216,6 @@ function drawLinearInterpolation() {
   }
   endShape();
   
-  // 下半分（ミラー）
   beginShape();
   for (let i = 0; i < n; i++) {
     let xPos = (i + 0.5) * (width / n);
@@ -250,7 +224,6 @@ function drawLinearInterpolation() {
   }
   endShape();
   
-  // 塗りつぶし
   fill(...ORANGE, Alpher * 0.3);
   noStroke();
   beginShape();
@@ -265,7 +238,6 @@ function drawLinearInterpolation() {
   endShape(CLOSE);
 }
 
-// Catmull-Rom スプライン描画
 function drawCatmullRom() {
   drawingContext.shadowBlur = Glow;
   drawingContext.shadowColor = color(...ORANGE, Alpher);
@@ -274,7 +246,6 @@ function drawCatmullRom() {
   strokeWeight(2);
   noFill();
   
-  // 上半分
   beginShape();
   let firstX = 0.5 * (width / n);
   let firstY = y / 2 - GLP_Hz_dB[0];
@@ -291,7 +262,6 @@ function drawCatmullRom() {
   curveVertex(lastX, lastY);
   endShape();
   
-  // 下半分（ミラー）
   beginShape();
   firstY = y / 2 + GLP_Hz_dB[0];
   curveVertex(firstX, firstY);
@@ -306,7 +276,6 @@ function drawCatmullRom() {
   curveVertex(lastX, lastY);
   endShape();
   
-  // 塗りつぶし（Catmull-Romで補間した点を使う）
   fill(...ORANGE, Alpher * 0.3);
   noStroke();
   
@@ -345,7 +314,6 @@ function drawCatmullRom() {
   endShape(CLOSE);
 }
 
-// Catmull-Rom 補間関数
 function catmullRomInterp(p0, p1, p2, p3, t) {
   let t2 = t * t;
   let t3 = t2 * t;
@@ -357,7 +325,6 @@ function catmullRomInterp(p0, p1, p2, p3, t) {
   );
 }
 
-// Cubic Spline の二次導関数を計算（自然スプライン）
 function computeCubicSplineM() {
   let nn = n;
   let h = new Array(nn - 1);
@@ -396,7 +363,6 @@ function computeCubicSplineM() {
   }
 }
 
-// Cubic Spline 補間値を取得
 function cubicSplineInterp(i, t) {
   if (i < 0) i = 0;
   if (i >= n - 1) i = n - 2;
@@ -411,7 +377,6 @@ function cubicSplineInterp(i, t) {
   return a + b * x + c * x * x + d * x * x * x;
 }
 
-// Cubic Spline 描画（SPAN風）
 function drawCubicSpline() {
   drawingContext.shadowBlur = Glow;
   drawingContext.shadowColor = color(...ORANGE, Alpher);
@@ -461,7 +426,6 @@ function drawCubicSpline() {
   endShape(CLOSE);
 }
 
-// 移動平均スムージング
 function drawMovingAverage() {
   drawingContext.shadowBlur = Glow;
   drawingContext.shadowColor = color(...ORANGE, Alpher);
@@ -520,7 +484,6 @@ function drawMovingAverage() {
   endShape(CLOSE);
 }
 
-// Gaussian スムージング
 function drawGaussianSmooth() {
   drawingContext.shadowBlur = Glow;
   drawingContext.shadowColor = color(...ORANGE, Alpher);
@@ -589,7 +552,6 @@ function drawGaussianSmooth() {
   endShape(CLOSE);
 }
 
-// アナライザーオーバーレイ（周波数目盛りとdBFS目盛り）
 function drawAnalyzerOverlay() {
   noFill();
   stroke(255, 255, 255, 100);
@@ -612,7 +574,6 @@ function drawAnalyzerOverlay() {
   noFill();
   rect(graphLeft, graphTop, graphWidth, graphHeight);
   
-  // 周波数目盛り
   let freqMarks = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
   
   textAlign(CENTER, TOP);
@@ -650,7 +611,6 @@ function drawAnalyzerOverlay() {
   textAlign(CENTER, TOP);
   text('Hz', graphLeft + graphWidth / 2, graphBottom + 20);
   
-  // dBFS目盛り
   let dbMin = -60;
   let dbMax = 0;
   let dbMarks = [0, -6, -12, -18, -24, -30, -36, -42, -48, -54, -60];
@@ -721,13 +681,20 @@ let frameCountFPS = 0;
 function updateFPS() {
   frameCountFPS++;
   if (millis() - lastFPSUpdate > 1000) {
-    document.getElementById('fpsDisplay').textContent = `FPS: ${frameCountFPS}`;
+    let fpsEl = document.getElementById('fpsDisplay');
+    if (fpsEl) {
+      fpsEl.textContent = `FPS: ${frameCountFPS}`;
+    }
     frameCountFPS = 0;
     lastFPSUpdate = millis();
   }
 }
 
-function setupUI() {
+// ========== UI初期化（DOMContentLoadedで確実に実行） ==========
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('UI初期化開始...');
+  
+  // 要素の存在確認
   const fileInput = document.getElementById('fileInput');
   const playBtn = document.getElementById('playBtn');
   const pauseBtn = document.getElementById('pauseBtn');
@@ -735,53 +702,85 @@ function setupUI() {
   const analyzerBtn = document.getElementById('analyzerBtn');
   const modeButtons = document.querySelectorAll('.mode-btn');
   
-  fileInput.addEventListener('change', (e) => {
+  if (!fileInput || !playBtn || !pauseBtn || !stopBtn || !analyzerBtn) {
+    console.error('必要なUI要素が見つかりません');
+    return;
+  }
+  
+  console.log('UI要素が見つかりました。イベントリスナーを設定します。');
+  
+  // ファイル選択
+  fileInput.addEventListener('change', function(e) {
+    console.log('ファイルが選択されました');
     const file = e.target.files[0];
     if (file) {
       if (soundFile) soundFile.stop();
       soundFile = loadSound(URL.createObjectURL(file), () => {
+        console.log('音声ファイル読み込み完了');
         analyzer.setInput(soundFile);
         fft.setInput(soundFile);
         updateAudioStatus(true, file.name);
+      }, (err) => {
+        console.error('音声ファイル読み込みエラー:', err);
       });
     }
   });
   
-  playBtn.addEventListener('click', () => {
+  // 再生ボタン
+  playBtn.addEventListener('click', function() {
+    console.log('再生ボタンがクリックされました');
     if (soundFile && soundFile.isLoaded()) {
-      if (!soundFile.isPlaying()) soundFile.play();
-      updateAudioStatus(true);
+      if (!soundFile.isPlaying()) {
+        soundFile.play();
+        updateAudioStatus(true);
+      }
+    } else {
+      console.warn('音声ファイルが読み込まれていません');
     }
   });
   
-  pauseBtn.addEventListener('click', () => {
+  // 一時停止ボタン
+  pauseBtn.addEventListener('click', function() {
+    console.log('一時停止ボタンがクリックされました');
     if (soundFile && soundFile.isPlaying()) {
       soundFile.pause();
       updateAudioStatus(false);
     }
   });
   
-  stopBtn.addEventListener('click', () => {
+  // 停止ボタン
+  stopBtn.addEventListener('click', function() {
+    console.log('停止ボタンがクリックされました');
     if (soundFile) {
       soundFile.stop();
       updateAudioStatus(false);
     }
   });
   
-  analyzerBtn.addEventListener('click', () => {
+  // アナライザーボタン
+  analyzerBtn.addEventListener('click', function() {
+    console.log('アナライザーボタンがクリックされました');
     analyzerMode = !analyzerMode;
     analyzerBtn.classList.toggle('active', analyzerMode);
+    console.log('アナライザーモード:', analyzerMode);
   });
   
-  modeButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
+  // スムージングモードボタン
+  modeButtons.forEach(function(btn) {
+    btn.addEventListener('click', function() {
       const mode = parseInt(btn.dataset.mode);
+      console.log('スムージングモード変更:', mode);
+      
       if (smoothingMode === mode) {
         smoothingMode = 0;
       } else {
         smoothingMode = mode;
       }
-      modeButtons.forEach(b => b.classList.remove('active'));
+      
+      modeButtons.forEach(function(b) {
+        b.classList.remove('active');
+      });
+      
       if (smoothingMode !== 0) {
         btn.classList.add('active');
       } else {
@@ -790,28 +789,52 @@ function setupUI() {
     });
   });
   
-  setupSlider('alphaSlider', 'alphaVal', (v) => Alpher = v);
-  setupSlider('spacingSlider', 'spacingVal', (v) => spacing = v, 2);
-  setupSlider('smoothSlider', 'smoothVal', (v) => Smooth = v);
-  setupSlider('minFreqSlider', 'minFreqVal', (v) => minFreq = v, 0, ' Hz');
-  setupSlider('maxFreqSlider', 'maxFreqVal', (v) => maxFreq = v, 0, ' Hz');
-  setupSlider('logBiasSlider', 'logBiasVal', (v) => LogBias_Hz = v, 2);
-}
+  // スライダー設定
+  setupSlider('alphaSlider', 'alphaVal', function(v) { Alpher = v; });
+  setupSlider('spacingSlider', 'spacingVal', function(v) { spacing = v; }, 2);
+  setupSlider('smoothSlider', 'smoothVal', function(v) { Smooth = v; });
+  setupSlider('minFreqSlider', 'minFreqVal', function(v) { minFreq = v; }, 0, ' Hz');
+  setupSlider('maxFreqSlider', 'maxFreqVal', function(v) { maxFreq = v; }, 0, ' Hz');
+  setupSlider('logBiasSlider', 'logBiasVal', function(v) { LogBias_Hz = v; }, 2);
+  
+  // 時計更新
+  updateTime();
+  setInterval(updateTime, 1000);
+  
+  uiInitialized = true;
+  console.log('UI初期化完了');
+});
 
-function setupSlider(sliderId, labelId, callback, decimals = 0, suffix = '') {
+function setupSlider(sliderId, labelId, callback, decimals, suffix) {
+  decimals = decimals || 0;
+  suffix = suffix || '';
+  
   const slider = document.getElementById(sliderId);
   const label = document.getElementById(labelId);
-  slider.addEventListener('input', () => {
+  
+  if (!slider || !label) {
+    console.error('スライダー要素が見つかりません:', sliderId, labelId);
+    return;
+  }
+  
+  slider.addEventListener('input', function() {
     const val = parseFloat(slider.value);
     callback(val);
     label.textContent = val.toFixed(decimals) + suffix;
   });
 }
 
-function updateAudioStatus(active, filename = '') {
+function updateAudioStatus(active, filename) {
+  filename = filename || '';
+  
   const statusEl = document.getElementById('audioStatus');
   const infoEl = document.getElementById('audioInfo');
   const statusTextEl = document.getElementById('status');
+  
+  if (!statusEl || !infoEl || !statusTextEl) {
+    console.error('ステータス表示要素が見つかりません');
+    return;
+  }
   
   if (active) {
     statusEl.classList.add('active');
@@ -827,9 +850,10 @@ function updateAudioStatus(active, filename = '') {
 }
 
 function updateTime() {
-  const now = new Date();
-  const time = now.toTimeString().split(' ')[0];
-  document.getElementById('timeDisplay').textContent = time;
+  const timeDisplay = document.getElementById('timeDisplay');
+  if (timeDisplay) {
+    const now = new Date();
+    const time = now.toTimeString().split(' ')[0];
+    timeDisplay.textContent = time;
+  }
 }
-setInterval(updateTime, 1000);
-updateTime();
