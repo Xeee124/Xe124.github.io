@@ -2,41 +2,1170 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>Audio Visualizer</title>
-  <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/addons/p5.sound.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VISUALIZER SELECT</title>
   <style>
-    #file-input-container
-    {
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --blue: #0000FF;
+      --white: #FFFFFF;
+      --black: #000000;
+      --gray: #888888;
+    }
+
+    body {
+      background: var(--white);
+      color: var(--black);
+      font-family: 'Orbitron', monospace;
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* ========== ノイズオーバーレイ ========== */
+    .noise {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    }
+
+    /* ========== スキャンライン ========== */
+    .scanlines {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 9998;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 255, 0.01) 2px,
+        rgba(0, 0, 255, 0.01) 4px
+      );
+      animation: scanMove 8s linear infinite;
+    }
+
+    @keyframes scanMove {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(20px); }
+    }
+
+    /* ========== グリッチスクリーン ========== */
+    .glitch-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 9997;
+      animation: screenGlitch 0.1s infinite;
+    }
+
+    @keyframes screenGlitch {
+      0%, 90%, 100% { opacity: 0; }
+      92% { 
+        opacity: 1; 
+        background: linear-gradient(90deg, transparent 0%, rgba(0,0,255,0.1) 50%, transparent 100%);
+        transform: translateX(-5px);
+      }
+      94% { 
+        opacity: 0.5; 
+        background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.2) 30%, transparent 100%);
+        transform: translateX(5px);
+      }
+      96% { opacity: 0; }
+    }
+
+    /* ========== ランダムグリッチバー ========== */
+    .glitch-bar {
+      position: fixed;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: var(--blue);
+      z-index: 9996;
+      animation: glitchBar 3s infinite;
+      opacity: 0;
+    }
+
+    .glitch-bar:nth-child(2) { animation-delay: 0.5s; }
+    .glitch-bar:nth-child(3) { animation-delay: 1.2s; }
+    .glitch-bar:nth-child(4) { animation-delay: 2.1s; }
+
+    @keyframes glitchBar {
+      0%, 95%, 100% { opacity: 0; top: 0; }
+      96% { opacity: 1; top: 20%; height: 2px; }
+      97% { opacity: 1; top: 60%; height: 5px; }
+      98% { opacity: 1; top: 35%; height: 1px; }
+      99% { opacity: 0.5; top: 80%; height: 3px; }
+    }
+
+    /* ========== デジタルパターン背景 ========== */
+    .digital-bg {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+
+    .binary-rain {
+      position: absolute;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      color: rgba(0, 0, 255, 0.07);
+      writing-mode: vertical-rl;
+      animation: binaryFall 20s linear infinite;
+      white-space: nowrap;
+    }
+
+    @keyframes binaryFall {
+      0% { transform: translateY(-100%); }
+      100% { transform: translateY(100vh); }
+    }
+
+    /* ========== メインコンテナ ========== */
+    .container {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+    }
+
+    /* ========== ヘッダーロゴ ========== */
+    .header {
+      text-align: center;
+      margin-bottom: 80px;
+      position: relative;
+    }
+
+    .logo-container {
+      position: relative;
+      display: inline-block;
+    }
+
+    .logo {
+      font-size: clamp(2.5rem, 10vw, 6rem);
+      font-weight: 900;
+      letter-spacing: 0.2em;
+      position: relative;
+      color: var(--black);
+      text-shadow: none;
+      animation: logoGlitch 5s infinite;
+    }
+
+    .logo::before,
+    .logo::after {
+      content: 'SELECT';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .logo::before {
+      color: var(--blue);
+      animation: glitchLeft 2s infinite;
+      clip-path: polygon(0 0, 100% 0, 100% 35%, 0 35%);
+      transform: translateX(-2px);
+    }
+
+    .logo::after {
+      color: var(--blue);
+      animation: glitchRight 2.5s infinite;
+      clip-path: polygon(0 65%, 100% 65%, 100% 100%, 0 100%);
+      transform: translateX(2px);
+    }
+
+    @keyframes logoGlitch {
+      0%, 90%, 100% { transform: translate(0); }
+      91% { transform: translate(-3px, 1px) skewX(-1deg); }
+      92% { transform: translate(3px, -1px) skewX(1deg); }
+      93% { transform: translate(-2px, -2px); }
+      94% { transform: translate(2px, 2px); }
+      95% { transform: translate(0); }
+    }
+
+    @keyframes glitchLeft {
+      0%, 85%, 100% { transform: translateX(-2px); opacity: 0; }
+      86%, 88%, 90%, 92%, 94% { transform: translateX(-4px); opacity: 1; }
+      87%, 89%, 91%, 93% { transform: translateX(0); opacity: 0.5; }
+    }
+
+    @keyframes glitchRight {
+      0%, 80%, 100% { transform: translateX(2px); opacity: 0; }
+      81%, 83%, 85%, 87% { transform: translateX(5px); opacity: 1; }
+      82%, 84%, 86% { transform: translateX(-2px); opacity: 0.5; }
+    }
+
+    .logo-sub {
+      display: block;
+      font-size: 0.8rem;
+      letter-spacing: 1.5em;
+      margin-top: 20px;
+      color: var(--gray);
+      font-weight: 400;
+      font-family: 'Share Tech Mono', monospace;
+    }
+
+    .logo-sub::before {
+      content: '// ';
+      color: var(--blue);
+    }
+
+    /* ========== デコライン ========== */
+    .deco-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      margin: 40px 0;
+    }
+
+    .deco-line {
+      width: 100px;
+      height: 1px;
+      background: var(--black);
+      position: relative;
+    }
+
+    .deco-line::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--blue);
+      animation: lineGlitch 3s infinite;
+    }
+
+    @keyframes lineGlitch {
+      0%, 90%, 100% { transform: scaleX(1); opacity: 0; }
+      92%, 96% { transform: scaleX(1.5); opacity: 1; }
+      94% { transform: scaleX(0.5); opacity: 0.5; }
+    }
+
+    .deco-symbol {
+      font-size: 1.5rem;
+      color: var(--blue);
+      animation: symbolPulse 1s infinite;
+    }
+
+    @keyframes symbolPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.1); }
+    }
+
+    /* ========== カード選択エリア ========== */
+    .cards-container {
+      display: flex;
+      gap: 40px;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 1200px;
+    }
+
+    .card {
+      width: 350px;
+      background: var(--white);
+      border: 2px solid var(--black);
+      position: relative;
+      cursor: pointer;
+      transition: all 0.1s;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(0,0,255,0.1), transparent);
+      transition: left 0.5s;
+    }
+
+    .card:hover::before {
+      left: 100%;
+    }
+
+    .card:hover {
+      border-color: var(--blue);
+      box-shadow: 
+        4px 4px 0 var(--blue),
+        -2px -2px 0 var(--blue);
+      animation: cardGlitch 0.3s infinite;
+    }
+
+    @keyframes cardGlitch {
+      0%, 100% { transform: translate(0); }
+      25% { transform: translate(-2px, 1px); }
+      50% { transform: translate(2px, -1px); }
+      75% { transform: translate(-1px, -1px); }
+    }
+
+    .card-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--black);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--black);
+      color: var(--white);
+    }
+
+    .card:hover .card-header {
+      background: var(--blue);
+      animation: headerFlash 0.2s infinite;
+    }
+
+    @keyframes headerFlash {
+      0%, 100% { background: var(--blue); }
+      50% { background: var(--black); }
+    }
+
+    .card-id {
+      font-size: 0.7rem;
+      letter-spacing: 0.2em;
+      font-family: 'Share Tech Mono', monospace;
+    }
+
+    .card-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.6rem;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      background: #00ff00;
+      animation: dotBlink 1s infinite;
+    }
+
+    @keyframes dotBlink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .card-body {
+      padding: 40px 30px;
+    }
+
+    .card-icon {
+      font-size: 4rem;
+      margin-bottom: 20px;
+      display: block;
+      position: relative;
+    }
+
+    .card:hover .card-icon {
+      animation: iconGlitch 0.1s infinite;
+    }
+
+    @keyframes iconGlitch {
+      0%, 100% { 
+        text-shadow: none;
+        transform: translate(0);
+      }
+      25% { 
+        text-shadow: -3px 0 var(--blue), 3px 0 var(--blue);
+        transform: translate(2px, 0);
+      }
+      50% { 
+        text-shadow: 3px 0 var(--blue), -3px 0 var(--black);
+        transform: translate(-2px, 0);
+      }
+      75% { 
+        text-shadow: -2px 2px var(--blue);
+        transform: translate(0, 2px);
+      }
+    }
+
+    .card-title {
+      font-size: 1.8rem;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      margin-bottom: 15px;
+      position: relative;
+    }
+
+    .card:hover .card-title {
+      color: var(--blue);
+    }
+
+    .card-title::after {
+      content: '_';
+      animation: cursorBlink 0.5s infinite;
+    }
+
+    @keyframes cursorBlink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    .card-desc {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--gray);
+      line-height: 1.8;
+      letter-spacing: 0.05em;
+    }
+
+    .card-footer {
+      padding: 15px 30px;
+      border-top: 1px solid var(--black);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.7rem;
+      color:
+      var(--gray);
+    }
+
+    .card:hover .card-footer {
+      background: var(--black);
+      color: var(--white);
+    }
+
+    .card-arrow {
+      font-size: 1.5rem;
+      transition: transform 0.3s;
+    }
+
+    .card:hover .card-arrow {
+      transform: translateX(10px);
+      color: var(--blue);
+      animation: arrowGlitch 0.2s infinite;
+    }
+
+    @keyframes arrowGlitch {
+      0%, 100% { transform: translateX(10px); }
+      50% { transform: translateX(15px); opacity: 0.5; }
+    }
+
+    .card-tags {
       display: flex;
       gap: 10px;
-      padding: 10px;
     }
-    #file-input-container *
-    {
-      background: none;
-      border: none;
-      color: transparent;
-      width: 150px;
-      height: 40px;
+
+    .tag {
+      padding: 3px 8px;
+      border: 1px solid currentColor;
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+    }
+
+    /* ========== フッター ========== */
+    .footer {
+      margin-top: 80px;
+      text-align: center;
+      font-family: 'Share Tech Mono', monospace;
+    }
+
+    .footer-code {
+      font-size: 0.7rem;
+      color: var(--gray);
+      letter-spacing: 0.1em;
+      margin-bottom: 20px;
+    }
+
+    .footer-code span {
+      color: var(--blue);
+    }
+
+    .footer-symbols {
+      font-size: 1.5rem;
+      letter-spacing: 0.5em;
+      color: var(--black);
+      animation: symbolsGlitch 4s infinite;
+    }
+
+    @keyframes symbolsGlitch {
+      0%, 95%, 100% { 
+        opacity: 1;
+        transform: translateX(0);
+      }
+      96% { 
+        opacity: 0.8;
+        transform: translateX(-5px);
+        color: var(--blue);
+      }
+      97% { 
+        opacity: 0.5;
+        transform: translateX(5px);
+      }
+      98% { 
+        opacity: 0.8;
+        transform: translateX(-3px);
+        color: var(--black);
+      }
+    }
+
+    /* ========== コーナーUI ========== */
+    .corner-ui {
+      position: fixed;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.6rem;
+      color: var(--gray);
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    .corner-ui.top-left {
+      top: 20px;
+      left: 20px;
+    }
+
+    .corner-ui.top-right {
+      top: 20px;
+      right: 20px;
+      text-align: right;
+    }
+
+    .corner-ui.bottom-left {
+      bottom: 20px;
+      left: 20px;
+    }
+
+    .corner-ui.bottom-right {
+      bottom: 20px;
+      right: 20px;
+      text-align: right;
+    }
+
+    .corner-bracket {
+      color: var(--blue);
+      font-size: 1.2rem;
+    }
+
+    .corner-data {
+      display: block;
+      margin: 5px 0;
+      letter-spacing: 0.1em;
+    }
+
+    .corner-data.blink {
+      animation: dataBlink 2s infinite;
+    }
+
+    @keyframes dataBlink {
+      0%, 90%, 100% { opacity: 1; }
+      95% { opacity: 0; }
+    }
+
+    /* ========== 浮遊シンボル ========== */
+    .floating-symbols {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+
+    .float-symbol {
+      position: absolute;
+      font-family: 'Share Tech Mono', monospace;
+      color: rgba(0, 0, 255, 0.1);
+      font-size: 2rem;
+      animation: floatMove 15s linear infinite;
+    }
+
+    @keyframes floatMove {
+      0% { 
+        transform: translateY(100vh) rotate(0deg);
+        opacity: 0;
+      }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { 
+        transform: translateY(-100px) rotate(360deg);
+        opacity: 0;
+      }
+    }
+
+    /* ========== クリック時のグリッチエフェクト ========== */
+    .click-effect {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--blue);
+      z-index: 10000;
+      pointer-events: none;
       opacity: 0;
-      cursor: pointer;
     }
-    #file-input-container *:focus
-    {
-      outline: none;
+
+    .click-effect.active {
+      animation: clickFlash 0.5s ease-out;
+    }
+
+    @keyframes clickFlash {
+      0% { 
+        opacity: 1;
+        transform: scaleX(0);
+      }
+      20% { 
+        opacity: 1;
+        transform: scaleX(1);
+      }
+      40% {
+        opacity: 0.8;
+        background: var(--white);
+      }
+      60% {
+        opacity: 0.5;
+        background: var(--black);
+      }
+      100% { 
+        opacity: 0;
+        transform: scaleX(1);
+      }
+    }
+
+    /* ========== ランダムグリッチテキスト ========== */
+    .glitch-text {
+      position: fixed;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--blue);
+      z-index: 50;
+      pointer-events: none;
+      opacity: 0;
+      animation: randomGlitchText 8s infinite;
+    }
+
+    @keyframes randomGlitchText {
+      0%, 92%, 100% { opacity: 0; }
+      93% { 
+        opacity: 1;
+        top: 30%;
+        left: 10%;
+      }
+      94% { 
+        opacity: 1;
+        top: 60%;
+        left: 80%;
+      }
+      95% { 
+        opacity: 0.5;
+        top: 20%;
+        left: 50%;
+      }
+      96% { opacity: 0; }
+    }
+
+    /* ========== レスポンシブ ========== */
+    @media (max-width: 800px) {
+      .cards-container {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .card {
+        width: 100%;
+        max-width: 350px;
+      }
+
+      .corner-ui {
+        display: none;
+      }
+
+      .logo {
+        font-size: 2rem;
+      }
+    }
+
+    /* ========== 超激しいモード（ホバー時） ========== */
+    body:has(.card:hover) .glitch-screen {
+      animation: screenGlitch 0.05s infinite;
+    }
+
+    body:has(.card:hover) .scanlines {
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 1px,
+        rgba(0, 0, 255, 0.05) 1px,
+        rgba(0, 0, 255, 0.05) 2px
+      );
     }
   </style>
 </head>
 <body>
-  <div id="file-input-container">
-    <label for="audioFile" style="opacity:0; width: 150px; height: 40px; display: inline-block;"></label>
-    <input type="file" id="audioFile" accept=".wav,.mp3" />
-    <button id="playBtn">再生</button>
-    <button id="pauseBtn">一時停止</button>
+  <!-- ノイズ＆エフェクトレイヤー -->
+  <div class="noise"></div>
+  <div class="scanlines"></div>
+  <div class="glitch-screen"></div>
+  <div class="glitch-bar"></div>
+  <div class="glitch-bar"></div>
+  <div class="glitch-bar"></div>
+  <div class="glitch-bar"></div>
+  <div class="click-effect" id="clickEffect"></div>
+
+  <!-- ランダムグリッチテキスト -->
+  <div class="glitch-text">ERROR_0x00FF</div>
+  <div class="glitch-text" style="animation-delay: 2s;">SYS_OVERRIDE</div>
+  <div class="glitch-text" style="animation-delay: 5s;">DATA_CORRUPT</div>
+
+  <!-- デジタル背景 -->
+  <div class="digital-bg" id="digitalBg"></div>
+
+  <!-- 浮遊シンボル -->
+  <div class="floating-symbols" id="floatingSymbols"></div>
+
+  <!-- コーナーUI -->
+  <div class="corner-ui top-left">
+    <span class="corner-bracket">┌</span>
+    <span class="corner-data">SYS.STATUS: ONLINE</span>
+    <span class="corner-data blink">VISUAL.ENGINE: READY</span>
+    <span class="corner-data">BUILD: 2024.12.21</span>
   </div>
-  <div id="controls-container"></div>
-  <script src="sketch.js"></script>
+
+  <div class="corner-ui top-right">
+    <span class="corner-bracket">┐</span>
+    <span class="corner-data" id="timeDisplay">00:00:00</span>
+    <span class="corner-data">LAT: 35.6762</span>
+    <span class="corner-data">LNG: 139.6503</span>
+  </div>
+
+  <div class="corner-ui bottom-left">
+    <span class="corner-data">FREQ: 44100Hz</span>
+    <span class="corner-data">BIT: 24</span>
+    <span class="corner-bracket">└</span>
+  </div>
+
+  <div class="corner-ui bottom-right">
+    <span class="corner-data" id="frameCount">FRM: 0000</span>
+    <span class="corner-data">MEM: 128MB</span>
+    <span class="corner-bracket">┘</span>
+  </div>
+
+  <!-- メインコンテンツ -->
+  <div class="container">
+    <!-- ヘッダー -->
+    <header class="header">
+      <div class="logo-container">
+        <h1 class="logo">SELECT</h1>
+        <span class="logo-sub">AUDIO_VISUALIZER_SYSTEM</span>
+      </div>
+
+      <div class="deco-container">
+        <div class="deco-line"></div>
+        <span class="deco-symbol">◆</span>
+        <span class="deco-symbol">◇</span>
+        <span class="deco-symbol">◆</span>
+        <div class="deco-line"></div>
+      </div>
+    </header>
+
+    <!-- カード選択 -->
+    <div class="cards-container">
+      <!-- NCS カード -->
+      <a href="./ncs/" class="card" id="card1">
+        <div class="card-header">
+          <span class="card-id">VIS_001</span>
+          <span class="card-status">
+            <span class="status-dot"></span>
+            ACTIVE
+          </span>
+        </div>
+        <div class="card-body">
+          <span class="card-icon">◢◤</span>
+          <h2 class="card-title">NCS</h2>
+          <p class="card-desc">
+            >> NoCopyrightSounds Style<br>
+            >> Waveform + Spectrum<br>
+            >> Real-time Audio Analysis
+          </p>
+        </div>
+        <div class="card-footer">
+          <div class="card-tags">
+            <span class="tag">WAVE</span>
+            <span class="tag">FFT</span>
+          </div>
+          <span class="card-arrow">→</span>
+        </div>
+      </a>
+
+      <!-- Spectrum カード -->
+      <a href="./spectrum/" class="card" id="card2">
+        <div class="card-header">
+          <span class="card-id">VIS_002</span>
+          <span class="card-status">
+            <span class="status-dot"></span>
+            ACTIVE
+          </span>
+        </div>
+        <div class="card-body">
+          <span class="card-icon">▰▰▰</span>
+          <h2 class="card-title">SPECTRUM</h2>
+          <p class="card-desc">
+            >> Frequency Spectrum Display<br>
+            >> Bass / Mid / High Separation<br>
+            >> Dynamic Color Response
+          </p>
+        </div>
+        <div class="card-footer">
+          <div class="card-tags">
+            <span class="tag">FREQ</span>
+            <span class="tag">COLOR</span>
+          </div>
+          <span class="card-arrow">→</span>
+        </div>
+      </a>
+    </div>
+
+    <!-- フッター -->
+    <footer class="footer">
+      <p class="footer-code">
+        <span>&lt;</span>SYSTEM.INITIALIZE<span>&gt;</span> 
+        STATUS: <span>COMPLETE</span> 
+        <span>&lt;/</span>SYSTEM<span>&gt;</span>
+      </p>
+      <div class="footer-symbols">
+        ◈ ◇ ◆ ▣ ▤ ▥ ◈
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    // ========== 時計表示 ==========
+    function updateTime() {
+      const now = new Date();
+      const time = now.toTimeString().split(' ')[0];
+      document.getElementById('timeDisplay').textContent = time;
+    }
+    setInterval(updateTime, 1000);
+    updateTime();
+
+    // ========== フレームカウンター ==========
+    let frame = 0;
+    function updateFrame() {
+      frame++;
+      if (frame > 9999) frame = 0;
+      document.getElementById('frameCount').textContent = 
+        'FRM: ' + String(frame).padStart(4, '0');
+      requestAnimationFrame(updateFrame);
+    }
+    updateFrame();
+
+    // ========== バイナリレイン生成 ==========
+    function createBinaryRain() {
+      const container = document.getElementById('digitalBg');
+      const columns = Math.floor(window.innerWidth / 30);
+      
+      for (let i = 0; i < columns; i++) {
+        const rain = document.createElement('div');
+        rain.className = 'binary-rain';
+        rain.style.left = (i * 30) + 'px';
+        rain.style.animationDelay = (Math.random() * 20) + 's';
+        rain.style.animationDuration = (15 + Math.random() * 10) + 's';
+        
+        let binary = '';
+        for (let j = 0; j < 50; j++) {
+          binary += Math.random() > 0.5 ? '1' : '0';
+          if (Math.random() > 0.8) binary += ' ';
+        }
+        rain.textContent = binary;
+        container.appendChild(rain);
+      }
+    }
+    createBinaryRain();
+
+    // ========== 浮遊シンボル生成 ==========
+    function createFloatingSymbols() {
+      const container = document.getElementById('floatingSymbols');
+      const symbols = ['◆', '◇', '▣', '▤', '◈', '⬡', '⬢', '△', '▽', '○', '●', '□', '■'];
+      
+      for (let i = 0; i < 15; i++) {
+        const symbol = document.createElement('div');
+        symbol.className
+        symbol.className = 'float-symbol';
+        symbol.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+        symbol.style.left = Math.random() * 100 + '%';
+        symbol.style.animationDelay = Math.random() * 15 + 's';
+        symbol.style.animationDuration = (10 + Math.random() * 10) + 's';
+        symbol.style.fontSize = (1 + Math.random() * 2) + 'rem';
+        container.appendChild(symbol);
+      }
+    }
+    createFloatingSymbols();
+
+    // ========== カードクリック時のグリッチエフェクト ==========
+    document.querySelectorAll('.card').forEach(card => {
+      card.addEventListener('click', function(e) {
+        e.preventDefault();
+        const href = this.getAttribute('href');
+        const clickEffect = document.getElementById('clickEffect');
+        
+        // 激しいグリッチ開始
+        clickEffect.classList.add('active');
+        document.body.style.animation = 'none';
+        
+        // 追加のフラッシュ効果
+        let flashCount = 0;
+        const flashInterval = setInterval(() => {
+          document.body.style.filter = flashCount % 2 === 0 
+            ? 'invert(1) hue-rotate(180deg)' 
+            : 'none';
+          flashCount++;
+          if (flashCount > 6) {
+            clearInterval(flashInterval);
+            document.body.style.filter = 'none';
+            // ページ遷移
+            window.location.href = href;
+          }
+        }, 50);
+      });
+    });
+
+    // ========== マウス追従グリッチ ==========
+    document.addEventListener('mousemove', (e) => {
+      if (Math.random() > 0.98) {
+        const glitch = document.createElement('div');
+        glitch.style.cssText = `
+          position: fixed;
+          left: ${e.clientX}px;
+          top: ${e.clientY}px;
+          width: ${Math.random() * 100 + 20}px;
+          height: 2px;
+          background: #0000FF;
+          pointer-events: none;
+          z-index: 9999;
+          opacity: 0.8;
+        `;
+        document.body.appendChild(glitch);
+        
+        setTimeout(() => {
+          glitch.style.transform = `translateX(${(Math.random() - 0.5) * 50}px)`;
+          glitch.style.opacity = '0';
+        }, 50);
+        
+        setTimeout(() => glitch.remove(), 200);
+      }
+    });
+
+    // ========== ランダムスクリーングリッチ ==========
+    function randomScreenGlitch() {
+      if (Math.random() > 0.7) {
+        const container = document.querySelector('.container');
+        container.style.transform = `translateX(${(Math.random() - 0.5) * 10}px)`;
+        container.style.filter = 'hue-rotate(' + (Math.random() * 20 - 10) + 'deg)';
+        
+        setTimeout(() => {
+          container.style.transform = 'translateX(0)';
+          container.style.filter = 'none';
+        }, 50);
+      }
+      
+      setTimeout(randomScreenGlitch, 3000 + Math.random() * 5000);
+    }
+    randomScreenGlitch();
+
+    // ========== ロゴのインタラクティブグリッチ ==========
+    const logo = document.querySelector('.logo');
+    logo.addEventListener('mouseenter', () => {
+      const chars = 'SELECT'.split('');
+      const glitchChars = '!@#$%^&*()_+-=[]{}|;:,.<>?/~`░▒▓█▀▄';
+      let iterations = 0;
+      
+      const interval = setInterval(() => {
+        logo.textContent = chars.map((char, i) => {
+          if (i < iterations) return chars[i];
+          return glitchChars[Math.floor(Math.random() * glitchChars.length)];
+        }).join('');
+        
+        iterations += 1/3;
+        
+        if (iterations >= chars.length) {
+          clearInterval(interval);
+          logo.textContent = 'SELECT';
+        }
+      }, 30);
+    });
+
+    // ========== キーボードイースターエッグ ==========
+    let konamiCode = [];
+    const konamiSequence = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 
+                            'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 
+                            'b', 'a'];
+    
+    document.addEventListener('keydown', (e) => {
+      konamiCode.push(e.key);
+      konamiCode = konamiCode.slice(-10);
+      
+      if (konamiCode.join(',') === konamiSequence.join(',')) {
+        // 超激しいモード発動
+        document.body.style.animation = 'ultraGlitch 0.1s infinite';
+        
+        const style = document.createElement('style');
+        style.textContent = `
+          @keyframes ultraGlitch {
+            0%, 100% { filter: none; transform: translate(0); }
+            10% { filter: invert(1); transform: translate(-5px, 5px); }
+            20% { filter: hue-rotate(90deg); transform: translate(5px, -5px); }
+            30% { filter: invert(1) hue-rotate(180deg); transform: translate(-3px, -3px); }
+            40% { filter: saturate(5); transform: translate(3px, 3px); }
+            50% { filter: contrast(2) brightness(1.5); transform: translate(-2px, 2px); }
+            60% { filter: invert(1) saturate(2); transform: translate(2px, -2px); }
+            70% { filter: hue-rotate(270deg); transform: translate(-4px, 0); }
+            80% { filter: invert(1) contrast(1.5); transform: translate(4px, 0); }
+            90% { filter: saturate(0); transform: translate(0, -3px); }
+          }
+        `;
+        document.head.appendChild(style);
+        
+        setTimeout(() => {
+          document.body.style.animation = 'none';
+        }, 3000);
+      }
+    });
+
+    // ========== ページロード時のイントロアニメーション ==========
+    window.addEventListener('load', () => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        z-index: 99999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: 'Share Tech Mono', monospace;
+        color: #0000FF;
+        font-size: 1rem;
+        letter-spacing: 0.3em;
+      `;
+      overlay.innerHTML = '<span id="loadText">INITIALIZING</span>';
+      document.body.appendChild(overlay);
+      
+      const loadText = document.getElementById('loadText');
+      const messages = [
+        'INITIALIZING...',
+        'LOADING ASSETS...',
+        'SYSTEM CHECK...',
+        'AUDIO ENGINE READY',
+        'VISUAL CORE ONLINE',
+        'WELCOME'
+      ];
+      
+      let msgIndex = 0;
+      const msgInterval = setInterval(() => {
+        if (msgIndex < messages.length) {
+          loadText.textContent = messages[msgIndex];
+          loadText.style.textShadow = '0 0 10px #0000FF';
+          msgIndex++;
+        } else {
+          clearInterval(msgInterval);
+          
+          // グリッチ遷移
+          let glitchCount = 0;
+          const glitchInterval = setInterval(() => {
+            overlay.style.transform = `translateX(${(Math.random() - 0.5) * 20}px)`;
+            overlay.style.opacity = 1 - (glitchCount * 0.1);
+            overlay.style.background = glitchCount % 2 === 0 ? '#0000FF' : '#000';
+            glitchCount++;
+            
+            if (glitchCount > 10) {
+              clearInterval(glitchInterval);
+              overlay.remove();
+            }
+          }, 50);
+        }
+      }, 200);
+    });
+
+    // ========== カーソルカスタマイズ ==========
+    const cursor = document.createElement('div');
+    cursor.style.cssText = `
+      position: fixed;
+      width: 20px;
+      height: 20px;
+      border: 2px solid #0000FF;
+      pointer-events: none;
+      z-index: 99998;
+      transition: transform 0.1s, border-color 0.1s;
+      mix-blend-mode: difference;
+    `;
+    document.body.appendChild(cursor);
+
+    const cursorDot = document.createElement('div');
+    cursorDot.style.cssText = `
+      position: fixed;
+      width: 4px;
+      height: 4px;
+      background: #0000FF;
+      pointer-events: none;
+      z-index: 99998;
+      mix-blend-mode: difference;
+    `;
+    document.body.appendChild(cursorDot);
+
+    document.addEventListener('mousemove', (e) => {
+      cursor.style.left = e.clientX - 10 + 'px';
+      cursor.style.top = e.clientY - 10 + 'px';
+      cursorDot.style.left = e.clientX - 2 + 'px';
+      cursorDot.style.top = e.clientY - 2 + 'px';
+    });
+
+    document.querySelectorAll('.card, a, button').forEach(el => {
+      el.addEventListener('mouseenter', () => {
+        cursor.style.transform = 'scale(2) rotate(45deg)';
+        cursor.style.borderColor = '#FFF';
+      });
+      el.addEventListener('mouseleave', () => {
+        cursor.style.transform = 'scale(1) rotate(0deg)';
+        cursor.style.borderColor = '#0000FF';
+      });
+    });
+
+    // ========== コンソールメッセージ ==========
+    console.log('%c ◆ AUDIO VISUALIZER SYSTEM ◆ ', 
+      'background: #0000FF; color: #FFF; font-size: 20px; padding: 10px;');
+    console.log('%c >> System initialized successfully', 
+      'color: #0000FF; font-family: monospace;');
+    console.log('%c >> Try the Konami Code for a surprise! ↑↑↓↓←→←→BA', 
+      'color: #888; font-family: monospace;');
+  </script>
 </body>
 </html>
+
+      
