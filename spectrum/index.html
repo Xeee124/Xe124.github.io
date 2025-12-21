@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audio Visualizer - Spectrum Analyzer</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    :root {
+      --orange: #FF7800;
+      --white: #FFFFFF;
+      --black: #000000;
+      --gray: #888888;
+      --dark-bg: #0a0a0a;
+    }
+    
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--dark-bg);
+      font-family: 'Share Tech Mono', monospace;
+      overflow: hidden;
+    }
+    
+    /* ノイズオーバーレイ */
+    .noise {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0.02;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    }
+    
+    /* スキャンライン */
+    .scanlines {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(255, 120, 0, 0.01) 2px,
+        rgba(255, 120, 0, 0.01) 4px
+      );
+      animation: scanMove 8s linear infinite;
+    }
+    
+    @keyframes scanMove {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(20px); }
+    }
+    
+    /* コーナーUI */
+    .corner-ui {
+      position: fixed;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      color: var(--gray);
+      z-index: 10;
+      pointer-events: none;
+      letter-spacing: 0.1em;
+    }
+    
+    .corner-ui.top-left {
+      top: 10px;
+      left: 10px;
+    }
+    
+    .corner-ui.top-right {
+      top: 10px;
+      right: 10px;
+      text-align: right;
+    }
+    
+    .corner-bracket {
+      color: var(--orange);
+      font-size: 14px;
+    }
+    
+    .corner-data {
+      display: block;
+      margin: 3px 0;
+    }
+    
+    #visualizer-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 0;
+    }
+    
+    /* コントロールパネル */
+    #control-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.95);
+      border-top: 1px solid var(--orange);
+      padding: 15px;
+      z-index: 100;
+      font-size: 11px;
+      color: var(--white);
+      box-shadow: 0 -2px 20px rgba(255, 120, 0, 0.3);
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    
+    .panel-section {
+      margin-bottom: 15px;
+    }
+    
+    .panel-title {
+      font-family: 'Orbitron', monospace;
+      font-size: 12px;
+      color: var(--orange);
+      margin-bottom: 8px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+    
+    .panel-title::before {
+      content: '◆ ';
+    }
+    
+    .control-group {
+      display: flex;
+      align-items: center;
+      margin: 8px 0;
+      gap: 10px;
+    }
+    
+    .control-label {
+      min-width: 150px;
+      color: var(--gray);
+    }
+    
+    /* スライダー */
+    input[type="range"] {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      background: #333;
+      outline: none;
+      border-radius: 2px;
+    }
+    
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      background: var(--orange);
+      cursor: pointer;
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--orange);
+    }
+    
+    input[type="range"]::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      background: var(--orange);
+      cursor: pointer;
+      border-radius: 50%;
+      border: none;
+      box-shadow: 0 0 8px var(--orange);
+    }
+    
+    /* ボタン */
+    .button-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    
+    button, .file-input-wrapper {
+      background: #1a1a1a;
+      color: var(--white);
+      border: 1px solid #333;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      transition: all 0.2s;
+      letter-spacing: 0.1em;
+    }
+    
+    button:hover, .file-input-wrapper:hover {
+      border-color: var(--orange);
+      background: #222;
+      box-shadow: 0 0 10px rgba(255, 120, 0, 0.3);
+    }
+    
+    button.active {
+      background: var(--orange);
+      color: var(--black);
+      border-color: var(--orange);
+      box-shadow: 0 0 15px rgba(255, 120, 0, 0.5);
+    }
+    
+    /* ファイル入力 */
+    .file-input-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+    
+    .file-input-wrapper input[type="file"] {
+      position: absolute;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+    
+    /* ステータスインジケーター */
+    .status-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #333;
+      margin-right: 8px;
+      animation: statusBlink 2s infinite;
+    }
+    
+    .status-indicator.active {
+      background: var(--orange);
+      box-shadow: 0 0 10px var(--orange);
+    }
+    
+    @keyframes statusBlink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    
+    /* グリッドレイアウト */
+    .grid-layout {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+    }
+    
+    /* レスポンシブ */
+    @media (max-width: 768px) {
+      #control-panel {
+        font-size: 10px;
+        padding: 10px;
+      }
+      
+      .control-label {
+        min-width: 120px;
+        font-size: 10px;
+      }
+      
+      button, .file-input-wrapper {
+        padding: 6px 12px;
+        font-size: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- エフェクトレイヤー -->
+  <div class="noise"></div>
+  <div class="scanlines"></div>
+  
+  <!-- コーナーUI -->
+  <div class="corner-ui top-left">
+    <span class="corner-bracket">┌</span>
+    <span class="corner-data">SYS: AUDIO_ANALYZER</span>
+    <span class="corner-data" id="status">STATUS: READY</span>
+  </div>
+  
+  <div class="corner-ui top-right">
+    <span class="corner-bracket">┐</span>
+    <span class="corner-data" id="timeDisplay">00:00:00</span>
+    <span class="corner-data" id="fpsDisplay">FPS: 60</span>
+  </div>
+  
+  <!-- ビジュアライザーキャンバス -->
+  <div id="visualizer-canvas"></div>
+  
+  <!-- コントロールパネル -->
+  <div id="control-panel">
+    <div class="grid-layout">
+      <!-- オーディオコントロール -->
+      <div class="panel-section">
+        <div class="panel-title">Audio Control</div>
+        <div class="file-input-wrapper">
+          <span>SELECT AUDIO FILE</span>
+          <input type="file" id="fileInput" accept="audio/*">
+        </div>
+        <div class="button-group" style="margin-top: 10px;">
+          <button id="playBtn">▶ PLAY</button>
+          <button id="pauseBtn">⏸ PAUSE</button>
+          <button id="stopBtn">⏹ STOP</button>
+        </div>
+        <div style="margin-top: 10px; color: var(--gray);">
+          <span class="status-indicator" id="audioStatus"></span>
+          <span id="audioInfo">No audio loaded</span>
+        </div>
+      </div>
+      
+      <!-- スムージングモード -->
+      <div class="panel-section">
+        <div class="panel-title">Smoothing Mode</div>
+        <div class="button-group">
+          <button class="mode-btn active" data-mode="0">BAR</button>
+          <button class="mode-btn" data-mode="1">LINEAR</button>
+          <button class="mode-btn" data-mode="2">CATMULL-ROM</button>
+          <button class="mode-btn" data-mode="3">CUBIC SPLINE</button>
+          <button class="mode-btn" data-mode="4">MOVING AVG</button>
+          <button class="mode-btn" data-mode="5">GAUSSIAN</button>
+        </div>
+        <div style="margin-top: 10px;">
+          <button id="analyzerBtn">ANALYZER OVERLAY</button>
+        </div>
+      </div>
+      
+      <!-- ビジュアル設定 -->
+      <div class="panel-section">
+        <div class="panel-title">Visual Settings</div>
+        <div class="control-group">
+          <label class="control-label">Opacity: <span id="alphaVal">185</span></label>
+          <input type="range" id="alphaSlider" min="0" max="255" value="185">
+        </div>
+        <div class="control-group">
+          <label class="control-label">Spacing: <span id="spacingVal">0.20</span></label>
+          <input type="range" id="spacingSlider" min="0" max="0.8" step="0.01" value="0.2">
+        </div>
+        <div class="control-group">
+          <label class="control-label">Smoothing: <span id="smoothVal">10</span></label>
+          <input type="range" id="smoothSlider" min="1" max="200" value="10">
+        </div>
+      </div>
+      
+      <!-- 周波数レンジ -->
+      <div class="panel-section">
+        <div class="panel-title">Frequency Range</div>
+        <div class="control-group">
+          <label class="control-label">Min Freq: <span id="minFreqVal">20</span> Hz</label>
+          <input type="range" id="minFreqSlider" min="10" max="200" value="20">
+        </div>
+        <div class="control-group">
+          <label class="control-label">Max Freq: <span id="maxFreqVal">20000</span> Hz</label>
+          <input type="range" id="maxFreqSlider" min="5000" max="22000" step="100" value="20000">
+        </div>
+        <div class="control-group">
+          <label class="control-label">Log Bias: <span id="logBiasVal">1.00</span></label>
+          <input type="range" id="logBiasSlider" min="0.3" max="2" step="0.01" value="1">
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- p5.js & p5.sound -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/addons/p5.sound.min.js"></script>
+  
+  <!-- ビジュアライザーコア -->
+  <script src="visualizer.js"></script>
+</body>
+</html>
