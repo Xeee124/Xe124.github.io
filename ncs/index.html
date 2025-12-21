@@ -1,1 +1,42 @@
-
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>Audio Visualizer</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/addons/p5.sound.min.js"></script>
+  <style>
+    #file-input-container
+    {
+      display: flex;
+      gap: 10px;
+      padding: 10px;
+    }
+    #file-input-container *
+    {
+      background: none;
+      border: none;
+      color: transparent;
+      width: 150px;
+      height: 40px;
+      opacity: 0;
+      cursor: pointer;
+    }
+    #file-input-container *:focus
+    {
+      outline: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="file-input-container">
+    <label for="audioFile" style="opacity:0; width: 150px; height: 40px; display: inline-block;"></label>
+    <input type="file" id="audioFile" accept=".wav,.mp3" />
+    <button id="playBtn">再生</button>
+    <button id="pauseBtn">一時停止</button>
+  </div>
+  <div id="controls-container"></div>
+  <script src="sketch.js"></script>
+</body>
+</html>
