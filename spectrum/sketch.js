@@ -30,6 +30,13 @@ let splineM = [];
 
 const ORANGE = [255, 120, 0];
 
+// システムオーディオ用の変数
+let systemAudioStream = null;
+let systemAudioSource = null;
+let systemAudioAnalyser = null;
+let isSystemAudioMode = false;
+let systemAudioData = null;
+
 if (typeof Math.log10 !== 'function') {
   Math.log10 = function(x) { return Math.log(x) / Math.LN10; };
 }
@@ -84,6 +91,80 @@ function freqToBin(freq, fftSize, sr) {
 function Audio() {
   let dt = Math.max(0.000001, deltaTime / 1000.0);
 
+  // システムオーディオモードの場合
+  if (isSystemAudioMode && systemAudioAnalyser && systemAudioData) {
+    systemAudioAnalyser.getByteFrequencyData(systemAudioData);
+    
+    let spectrum = systemAudioData;
+    let fftSize = systemAudioAnalyser.fftSize;
+    
+    let sr = getAudioContext().sampleRate;
+
+    let logMinFreq = Math.log10(minFreq);
+    let logMaxFreq = Math.log10(maxFreq);
+
+    let freqEdges = new Array(n + 1);
+    for (let k = 0; k <= n; k++) {
+      let t = k / n;
+      t = Math.pow(t, LogBias_Hz);
+      let logFreq = logMinFreq + t * (logMaxFreq - logMinFreq);
+      freqEdges[k] = Math.pow(10, logFreq);
+    }
+
+    let rawRMS = new Array(n);
+    let maxRMS = 0;
+
+    for (let i = 0; i < n; i++) {
+      let startFreq = freqEdges[i];
+      let endFreq = freqEdges[i + 1];
+      
+      let startBin = freqToBin(startFreq, fftSize, sr);
+      let endBin = freqToBin(endFreq, fftSize, sr);
+      
+      startBin = Math.max(0, Math.min(startBin, spectrum.length - 1));
+      endBin = Math.max(startBin + 1, Math.min(endBin, spectrum.length));
+
+      let sum = 0;
+      let count = 0;
+      
+      for (let j = startBin; j < endBin; j++) {
+        sum += spectrum[j] * spectrum[j];
+        count++;
+      }
+      
+      if (count === 0) count = 1;
+      
+      rawRMS[i] = Math.sqrt(sum / count) / 255;
+      maxRMS = Math.max(maxRMS, rawRMS[i]);
+    }
+
+    if (maxRMS < 0.001) maxRMS = 1;
+
+    for (let i = 0; i < n; i++) {
+      let rms = rawRMS[i] / maxRMS;
+      rms = rms * rms;
+
+      let alpha = 1 - Math.exp(-deltaTime / Smooth);
+      let smoothRMS = prevRMS[i] + alpha * (rms - prevRMS[i]);
+      prevRMS[i] = smoothRMS;
+
+      let targetHeight = 0;
+      if (smoothRMS >= minVisible) {
+        targetHeight = smoothRMS * (Limier * y / 2);
+      }
+
+      GLP_Hz_dB[i] = targetHeight;
+      vel[i] = 0;
+    }
+    
+    if (smoothingMode === 3) {
+      computeCubicSplineM();
+    }
+    
+    return; // システムオーディオ処理完了
+  }
+
+  // 通常のファイル再生モード
   if (soundFile && soundFile.isLoaded && soundFile.isLoaded() && soundFile.isPlaying && soundFile.isPlaying()) {
     let spectrum = fft.analyze();
     let fftSize = spectrum.length * 2;
@@ -155,6 +236,7 @@ function Audio() {
     }
     
   } else {
+    // 再生していない時は徐々に減衰
     for (let i = 0; i < n; i++) {
       vel[i] += gAccel * dt;
       let newH = GLP_Hz_dB[i] - vel[i] * dt;
@@ -791,6 +873,34 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('アナライザーモード:', analyzerMode);
   });
   
+  // システムオーディオボタン
+  const systemAudioBtn = document.getElementById('systemAudioBtn');
+  
+  if (systemAudioBtn) {
+    systemAudioBtn.addEventListener('click', async function() {
+      console.log('システムオーディオボタンがクリックされました');
+    
+      if (isSystemAudioMode) {
+        // システムオーディオを停止
+        stopSystemAudio();
+        systemAudioBtn.classList.remove('active');
+        systemAudioBtn.textContent = '🔊 SYSTEM AUDIO';
+        updateAudioStatus(false, 'System audio stopped');
+      } else {
+        // システムオーディオを開始
+        try {
+          await startSystemAudio();
+          systemAudioBtn.classList.add('active');
+          systemAudioBtn.textContent = '🔇 STOP CAPTURE';
+          updateAudioStatus(true, 'System Audio (PC Sound)');
+        } catch (err) {
+          console.error('システムオーディオ取得エラー:', err);
+          alert('システムオーディオの取得に失敗しました。\n\n画面共有ダイアログで「タブ」または「画面全体」を選択し、\n「音声を共有」にチェックを入れてください。');
+        }
+      }
+    });
+  }
+
   modeButtons.forEach(function(btn) {
     btn.addEventListener('click', function() {
       const mode = parseInt(btn.dataset.mode);
@@ -885,4 +995,85 @@ function updateTime() {
     const time = now.toTimeString().split(' ')[0];
     timeDisplay.textContent = time;
   }
+}
+
+// システムオーディオ開始
+async function startSystemAudio() {
+  // 既存の音声を停止
+  if (soundFile && soundFile.isPlaying && soundFile.isPlaying()) {
+    soundFile.stop();
+  }
+  
+  // 画面共有APIでシステム音声を取得
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: true,  // 画面共有には video が必要
+    audio: {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false
+    }
+  });
+  
+  // 音声トラックがあるか確認
+  const audioTracks = stream.getAudioTracks();
+  if (audioTracks.length === 0) {
+    stream.getTracks().forEach(track => track.stop());
+    throw new Error('音声トラックがありません。音声の共有にチェックを入れてください。');
+  }
+  
+  // ビデオトラックは不要なので停止
+  stream.getVideoTracks().forEach(track => track.stop());
+  
+  systemAudioStream = stream;
+  
+  // Web Audio APIでアナライザーを設定
+  const audioContext = getAudioContext();
+  systemAudioSource = audioContext.createMediaStreamSource(stream);
+  
+  // アナライザーノードを作成
+  systemAudioAnalyser = audioContext.createAnalyser();
+  systemAudioAnalyser.fftSize = 16384;
+  systemAudioAnalyser.smoothingTimeConstant = 0.8;
+  
+  // 接続
+  systemAudioSource.connect(systemAudioAnalyser);
+  // 注意: スピーカーには接続しない（ハウリング防止）
+  
+  // データ配列を初期化
+  systemAudioData = new Uint8Array(systemAudioAnalyser.frequencyBinCount);
+  
+  isSystemAudioMode = true;
+  
+  // トラック終了時の処理
+  audioTracks[0].onended = function() {
+    console.log('システムオーディオが終了しました');
+    stopSystemAudio();
+    const btn = document.getElementById('systemAudioBtn');
+    if (btn) {
+      btn.classList.remove('active');
+      btn.textContent = '🔊 SYSTEM AUDIO';
+    }
+    updateAudioStatus(false, 'System audio ended');
+  };
+  
+  console.log('システムオーディオ開始成功');
+}
+
+// システムオーディオ停止
+function stopSystemAudio() {
+  if (systemAudioStream) {
+    systemAudioStream.getTracks().forEach(track => track.stop());
+    systemAudioStream = null;
+  }
+  
+  if (systemAudioSource) {
+    systemAudioSource.disconnect();
+    systemAudioSource = null;
+  }
+  
+  systemAudioAnalyser = null;
+  systemAudioData = null;
+  isSystemAudioMode = false;
+  
+  console.log('システムオーディオ停止');
 }
