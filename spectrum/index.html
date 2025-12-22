@@ -398,20 +398,18 @@
       <!-- オーディオコントロール -->
       <div class="panel-section">
         <div class="panel-title">Audio Control</div>
-        <div class="file-input-wrapper">
-          <span>SELECT AUDIO FILE</span>
-          <input type="file" id="fileInput" accept="audio/*">
+        <div class="button-group">
+          <div class="file-input-wrapper">
+            <span>SELECT AUDIO FILE</span>
+            <input type="file" id="fileInput" accept="audio/*">
+          </div>
+          <button id="systemAudioBtn">🔊 SYSTEM AUDIO</button>
         </div>
         <div class="button-group" style="margin-top: 1vh;">
           <button id="playBtn">▶ PLAY</button>
           <button id="pauseBtn">⏸ PAUSE</button>
           <button id="stopBtn">⏹ STOP</button>
         </div>
-        <div style="margin-top: 1vh; color: var(--gray); font-size: 0.65vw;">
-          <span class="status-indicator" id="audioStatus"></span>
-          <span id="audioInfo">No audio loaded</span>
-        </div>
-      </div>
       
       <!-- スムージングモード -->
       <div class="panel-section">
