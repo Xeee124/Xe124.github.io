@@ -1,5 +1,5 @@
 // Audio Visualizer - Cyber Style Edition
-// SPAN風スムージング + アナライザーモード搭載版
+// スムージング + アナライザーモード搭載版
 
 let n = 512;
 let GLP_Hz_dB = [];
@@ -24,26 +24,16 @@ let minVisible = 0.001;
 
 let sampleRate = 44100;
 
-// スムージングモード
 let smoothingMode = 0;
-
-// アナライザーモード
 let analyzerMode = false;
-
-// Cubic Spline用の二次導関数キャッシュ
 let splineM = [];
 
-// オレンジカラー定義
 const ORANGE = [255, 120, 0];
-
-// UI初期化完了フラグ
-let uiInitialized = false;
 
 if (typeof Math.log10 !== 'function') {
   Math.log10 = function(x) { return Math.log(x) / Math.LN10; };
 }
 
-// ========== p5.js setup（ビジュアライザー初期化のみ） ==========
 function setup() {
   y = windowHeight;
   x = windowWidth;
@@ -58,8 +48,6 @@ function setup() {
   prevRMS = new Array(n).fill(0);
   vel = new Array(n).fill(0);
   splineM = new Array(n).fill(0);
-  
-  // UI初期化はここでは行わない（DOMContentLoadedで実行）
 }
 
 function draw() {
@@ -690,11 +678,10 @@ function updateFPS() {
   }
 }
 
-// ========== UI初期化（DOMContentLoadedで確実に実行） ==========
+// UI初期化（DOMContentLoadedで確実に実行）
 document.addEventListener('DOMContentLoaded', function() {
   console.log('UI初期化開始...');
   
-  // 要素の存在確認
   const fileInput = document.getElementById('fileInput');
   const playBtn = document.getElementById('playBtn');
   const pauseBtn = document.getElementById('pauseBtn');
@@ -709,7 +696,6 @@ document.addEventListener('DOMContentLoaded', function() {
   
   console.log('UI要素が見つかりました。イベントリスナーを設定します。');
   
-  // ファイル選択
   fileInput.addEventListener('change', function(e) {
     console.log('ファイルが選択されました');
     const file = e.target.files[0];
@@ -726,7 +712,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
   
-  // 再生ボタン
   playBtn.addEventListener('click', function() {
     console.log('再生ボタンがクリックされました');
     if (soundFile && soundFile.isLoaded()) {
@@ -739,7 +724,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
   
-  // 一時停止ボタン
   pauseBtn.addEventListener('click', function() {
     console.log('一時停止ボタンがクリックされました');
     if (soundFile && soundFile.isPlaying()) {
@@ -748,7 +732,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
   
-  // 停止ボタン
   stopBtn.addEventListener('click', function() {
     console.log('停止ボタンがクリックされました');
     if (soundFile) {
@@ -757,7 +740,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
   
-  // アナライザーボタン
   analyzerBtn.addEventListener('click', function() {
     console.log('アナライザーボタンがクリックされました');
     analyzerMode = !analyzerMode;
@@ -765,7 +747,6 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('アナライザーモード:', analyzerMode);
   });
   
-  // スムージングモードボタン
   modeButtons.forEach(function(btn) {
     btn.addEventListener('click', function() {
       const mode = parseInt(btn.dataset.mode);
@@ -789,7 +770,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
   
-  // スライダー設定
   setupSlider('alphaSlider', 'alphaVal', function(v) { Alpher = v; });
   setupSlider('spacingSlider', 'spacingVal', function(v) { spacing = v; }, 2);
   setupSlider('smoothSlider', 'smoothVal', function(v) { Smooth = v; });
@@ -797,11 +777,9 @@ document.addEventListener('DOMContentLoaded', function() {
   setupSlider('maxFreqSlider', 'maxFreqVal', function(v) { maxFreq = v; }, 0, ' Hz');
   setupSlider('logBiasSlider', 'logBiasVal', function(v) { LogBias_Hz = v; }, 2);
   
-  // 時計更新
   updateTime();
   setInterval(updateTime, 1000);
   
-  uiInitialized = true;
   console.log('UI初期化完了');
 });
 
