@@ -700,51 +700,53 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('ファイルが選択されました');
     const file = e.target.files[0];
     if (file) {
-      // 既存の音声を停止
-      if (soundFile && soundFile.isPlaying && soundFile.isPlaying()) {
-        soundFile.stop();
+      // 既存の音声を停止・破棄
+      if (soundFile) {
+        if (soundFile.isPlaying && soundFile.isPlaying()) {
+          soundFile.stop();
+        }
+        soundFile.disconnect();
+        soundFile = null;
       }
       
       // AudioContextを開始（ユーザーインタラクション時に必要）
-      if (getAudioContext().state !== 'running') {
-        getAudioContext().resume();
-      }
+      userStartAudio();
       
-      // FileReaderでArrayBufferとして読み込む
-      const reader = new FileReader();
-      reader.onload = function(event) {
-        const arrayBuffer = event.target.result;
-        
-        // p5.SoundFileを手動で作成
-        soundFile = new p5.SoundFile();
-        soundFile.setBuffer(null); // 初期化
-        
-        // AudioContextでデコード
-        getAudioContext().decodeAudioData(arrayBuffer, function(audioBuffer) {
-          // デコード成功
-          soundFile.buffer = audioBuffer;
-          soundFile.panner.inputChannels(audioBuffer.numberOfChannels);
-          
-          console.log('音声ファイル読み込み完了:', file.name);
-          console.log('長さ:', audioBuffer.duration, '秒');
+      // ファイル名を先に表示
+      const fileName = file.name;
+      updateAudioStatus(false, fileName);
+      document.getElementById('audioInfo').textContent = fileName + ' (loading...)';
+      
+      // BlobURLを作成してloadSoundで読み込む
+      const blobUrl = URL.createObjectURL(file);
+      
+      soundFile = loadSound(
+        blobUrl,
+        // 成功コールバック
+        function() {
+          console.log('音声ファイル読み込み完了:', fileName);
           
           // FFTとAnalyzerに接続
           fft.setInput(soundFile);
           analyzer.setInput(soundFile);
           
-          updateAudioStatus(false, file.name);
+          // BlobURLを解放
+          URL.revokeObjectURL(blobUrl);
           
-        }, function(error) {
-          console.error('音声デコードエラー:', error);
-          alert('音声ファイルの読み込みに失敗しました');
-        });
-      };
-      
-      reader.onerror = function() {
-        console.error('ファイル読み込みエラー');
-      };
-      
-      reader.readAsArrayBuffer(file);
+          updateAudioStatus(false, fileName);
+          console.log('長さ:', soundFile.duration(), '秒');
+        },
+        // エラーコールバック
+        function(err) {
+          console.error('音声ファイル読み込みエラー:', err);
+          URL.revokeObjectURL(blobUrl);
+          document.getElementById('audioInfo').textContent = 'Error loading file';
+        },
+        // 読み込み中コールバック（進捗）
+        function(progress) {
+          console.log('読み込み中...', Math.round(progress * 100) + '%');
+        }
+      );
     }
   });
   
@@ -752,11 +754,9 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('再生ボタンがクリックされました');
     
     // AudioContextを開始
-    if (getAudioContext().state !== 'running') {
-      getAudioContext().resume();
-    }
+    userStartAudio();
     
-    if (soundFile && soundFile.buffer) {
+    if (soundFile && soundFile.isLoaded && soundFile.isLoaded()) {
       if (!soundFile.isPlaying()) {
         soundFile.play();
         updateAudioStatus(true);
@@ -770,7 +770,7 @@ document.addEventListener('DOMContentLoaded', function() {
   
   pauseBtn.addEventListener('click', function() {
     console.log('一時停止ボタンがクリックされました');
-    if (soundFile && soundFile.buffer && soundFile.isPlaying()) {
+    if (soundFile && soundFile.isLoaded && soundFile.isLoaded() && soundFile.isPlaying()) {
       soundFile.pause();
       updateAudioStatus(false);
     }
@@ -778,7 +778,7 @@ document.addEventListener('DOMContentLoaded', function() {
   
   stopBtn.addEventListener('click', function() {
     console.log('停止ボタンがクリックされました');
-    if (soundFile && soundFile.buffer) {
+    if (soundFile && soundFile.isLoaded && soundFile.isLoaded()) {
       soundFile.stop();
       updateAudioStatus(false);
     }
