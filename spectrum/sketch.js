@@ -700,33 +700,77 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('ファイルが選択されました');
     const file = e.target.files[0];
     if (file) {
-      if (soundFile) soundFile.stop();
-      soundFile = loadSound(URL.createObjectURL(file), () => {
-        console.log('音声ファイル読み込み完了');
-        analyzer.setInput(soundFile);
-        fft.setInput(soundFile);
-        updateAudioStatus(true, file.name);
-      }, (err) => {
-        console.error('音声ファイル読み込みエラー:', err);
-      });
+      // 既存の音声を停止
+      if (soundFile && soundFile.isPlaying && soundFile.isPlaying()) {
+        soundFile.stop();
+      }
+      
+      // AudioContextを開始（ユーザーインタラクション時に必要）
+      if (getAudioContext().state !== 'running') {
+        getAudioContext().resume();
+      }
+      
+      // FileReaderでArrayBufferとして読み込む
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const arrayBuffer = event.target.result;
+        
+        // p5.SoundFileを手動で作成
+        soundFile = new p5.SoundFile();
+        soundFile.setBuffer(null); // 初期化
+        
+        // AudioContextでデコード
+        getAudioContext().decodeAudioData(arrayBuffer, function(audioBuffer) {
+          // デコード成功
+          soundFile.buffer = audioBuffer;
+          soundFile.panner.inputChannels(audioBuffer.numberOfChannels);
+          
+          console.log('音声ファイル読み込み完了:', file.name);
+          console.log('長さ:', audioBuffer.duration, '秒');
+          
+          // FFTとAnalyzerに接続
+          fft.setInput(soundFile);
+          analyzer.setInput(soundFile);
+          
+          updateAudioStatus(false, file.name);
+          
+        }, function(error) {
+          console.error('音声デコードエラー:', error);
+          alert('音声ファイルの読み込みに失敗しました');
+        });
+      };
+      
+      reader.onerror = function() {
+        console.error('ファイル読み込みエラー');
+      };
+      
+      reader.readAsArrayBuffer(file);
     }
   });
   
   playBtn.addEventListener('click', function() {
     console.log('再生ボタンがクリックされました');
-    if (soundFile && soundFile.isLoaded()) {
+    
+    // AudioContextを開始
+    if (getAudioContext().state !== 'running') {
+      getAudioContext().resume();
+    }
+    
+    if (soundFile && soundFile.buffer) {
       if (!soundFile.isPlaying()) {
         soundFile.play();
         updateAudioStatus(true);
+        console.log('再生開始');
       }
     } else {
       console.warn('音声ファイルが読み込まれていません');
+      alert('先に音声ファイルを選択してください');
     }
   });
   
   pauseBtn.addEventListener('click', function() {
     console.log('一時停止ボタンがクリックされました');
-    if (soundFile && soundFile.isPlaying()) {
+    if (soundFile && soundFile.buffer && soundFile.isPlaying()) {
       soundFile.pause();
       updateAudioStatus(false);
     }
@@ -734,7 +778,7 @@ document.addEventListener('DOMContentLoaded', function() {
   
   stopBtn.addEventListener('click', function() {
     console.log('停止ボタンがクリックされました');
-    if (soundFile) {
+    if (soundFile && soundFile.buffer) {
       soundFile.stop();
       updateAudioStatus(false);
     }
@@ -802,8 +846,12 @@ function setupSlider(sliderId, labelId, callback, decimals, suffix) {
   });
 }
 
+let currentFileName = '';
+
 function updateAudioStatus(active, filename) {
-  filename = filename || '';
+  if (filename) {
+    currentFileName = filename;
+  }
   
   const statusEl = document.getElementById('audioStatus');
   const infoEl = document.getElementById('audioInfo');
@@ -816,14 +864,17 @@ function updateAudioStatus(active, filename) {
   
   if (active) {
     statusEl.classList.add('active');
-    infoEl.textContent = filename || 'Audio playing';
-    statusTextEl.textContent = 'STATUS: ACTIVE';
+    infoEl.textContent = currentFileName + ' (playing)';
+    statusTextEl.textContent = 'STATUS: PLAYING';
   } else {
     statusEl.classList.remove('active');
-    if (filename) {
-      infoEl.textContent = filename + ' (stopped)';
+    if (currentFileName) {
+      infoEl.textContent = currentFileName + ' (ready)';
+      statusTextEl.textContent = 'STATUS: READY';
+    } else {
+      infoEl.textContent = 'No audio loaded';
+      statusTextEl.textContent = 'STATUS: READY';
     }
-    statusTextEl.textContent = 'STATUS: READY';
   }
 }
 
