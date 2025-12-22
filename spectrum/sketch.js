@@ -781,6 +781,15 @@ document.addEventListener('DOMContentLoaded', function() {
   fileInput.addEventListener('change', function(e) {
     console.log('ファイルが選択されました');
     const file = e.target.files[0];
+    if (isSystemAudioMode) {
+    stopSystemAudio();
+    const systemAudioBtn = document.getElementById('systemAudioBtn');
+    if (systemAudioBtn) {
+      systemAudioBtn.classList.remove('active');
+      systemAudioBtn.textContent = '🔊 SYSTEM AUDIO';
+    }
+    updateAudioStatus(false, 'System audio stopped');
+  }
     if (file) {
       // 既存の音声を停止・破棄
       if (soundFile) {
@@ -835,6 +844,16 @@ document.addEventListener('DOMContentLoaded', function() {
   playBtn.addEventListener('click', function() {
     console.log('再生ボタンがクリックされました');
     
+    if (isSystemAudioMode) {
+      stopSystemAudio();
+      const systemAudioBtn = document.getElementById('systemAudioBtn');
+      if (systemAudioBtn) {
+        systemAudioBtn.classList.remove('active');
+        systemAudioBtn.textContent = '🔊 SYSTEM AUDIO';
+      }
+      updateAudioStatus(false, 'System audio stopped');
+    }
+
     // AudioContextを開始
     userStartAudio();
     
@@ -889,6 +908,16 @@ document.addEventListener('DOMContentLoaded', function() {
       } else {
         // システムオーディオを開始
         try {
+          if (soundFile && soundFile.isLoaded && soundFile.isLoaded() &&
+              soundFile.isPlaying && soundFile.isPlaying()) {
+            try {
+              soundFile.pause();
+              updateAudioStatus(false);
+              console.log('現在再生中の音声ファイルを一時停止しました');
+            } catch (e) {
+              console.warn('soundFile pause failed:', e);
+            }
+          }
           await startSystemAudio();
           systemAudioBtn.classList.add('active');
           systemAudioBtn.textContent = '🔇 STOP CAPTURE';
