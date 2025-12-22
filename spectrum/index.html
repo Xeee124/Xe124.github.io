@@ -27,6 +27,8 @@
       background: var(--dark-bg);
       font-family: 'Share Tech Mono', monospace;
       overflow: hidden;
+      width: 100vw;
+      height: 100vh;
     }
     
     /* ノイズオーバーレイ */
@@ -70,7 +72,7 @@
     .corner-ui {
       position: fixed;
       font-family: 'Share Tech Mono', monospace;
-      font-size: 10px;
+      font-size: 0.65vw;
       color: var(--gray);
       z-index: 10;
       pointer-events: none;
@@ -78,30 +80,33 @@
     }
     
     .corner-ui.top-left {
-      top: 10px;
-      left: 10px;
+      top: 1vh;
+      left: 1vw;
     }
     
     .corner-ui.top-right {
-      top: 10px;
-      right: 10px;
+      top: 1vh;
+      right: 1vw;
       text-align: right;
     }
     
     .corner-bracket {
       color: var(--orange);
-      font-size: 14px;
+      font-size: 1vw;
     }
     
     .corner-data {
       display: block;
-      margin: 3px 0;
+      margin: 0.3vh 0;
     }
     
+    /* ビジュアライザーキャンバス */
     #visualizer-canvas {
-      position: absolute;
+      position: fixed;
       top: 0;
       left: 0;
+      width: 100vw;
+      height: 100vh;
       z-index: 0;
     }
     
@@ -110,27 +115,27 @@
       position: fixed;
       bottom: 0;
       left: 0;
-      width: 100%;
-      background: rgba(0, 0, 0, 0.95);
+      width: 100vw;
+      height: 18vh;
+      background: rgba(0, 0, 0, 0.92);
       border-top: 1px solid var(--orange);
-      padding: 15px;
+      padding: 1vh 1.5vw;
       z-index: 100;
-      font-size: 11px;
+      font-size: 0.7vw;
       color: var(--white);
       box-shadow: 0 -2px 20px rgba(255, 120, 0, 0.3);
-      max-height: 300px;
       overflow-y: auto;
     }
     
     .panel-section {
-      margin-bottom: 15px;
+      margin-bottom: 1vh;
     }
     
     .panel-title {
       font-family: 'Orbitron', monospace;
-      font-size: 12px;
+      font-size: 0.8vw;
       color: var(--orange);
-      margin-bottom: 8px;
+      margin-bottom: 0.5vh;
       letter-spacing: 0.15em;
       text-transform: uppercase;
     }
@@ -142,13 +147,14 @@
     .control-group {
       display: flex;
       align-items: center;
-      margin: 8px 0;
-      gap: 10px;
+      margin: 0.5vh 0;
+      gap: 0.5vw;
     }
     
     .control-label {
-      min-width: 150px;
+      min-width: 9vw;
       color: var(--gray);
+      font-size: 0.65vw;
     }
     
     /* スライダー */
@@ -156,7 +162,7 @@
       flex: 1;
       -webkit-appearance: none;
       appearance: none;
-      height: 4px;
+      height: 0.3vh;
       background: #333;
       outline: none;
       border-radius: 2px;
@@ -165,8 +171,8 @@
     input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none;
       appearance: none;
-      width: 12px;
-      height: 12px;
+      width: 0.8vw;
+      height: 0.8vw;
       background: var(--orange);
       cursor: pointer;
       border-radius: 50%;
@@ -174,8 +180,8 @@
     }
     
     input[type="range"]::-moz-range-thumb {
-      width: 12px;
-      height: 12px;
+      width: 0.8vw;
+      height: 0.8vw;
       background: var(--orange);
       cursor: pointer;
       border-radius: 50%;
@@ -186,7 +192,7 @@
     /* ボタン */
     .button-group {
       display: flex;
-      gap: 8px;
+      gap: 0.5vw;
       flex-wrap: wrap;
     }
     
@@ -194,10 +200,10 @@
       background: #1a1a1a;
       color: var(--white);
       border: 1px solid #333;
-      padding: 8px 16px;
+      padding: 0.6vh 1vw;
       cursor: pointer;
       font-family: 'Share Tech Mono', monospace;
-      font-size: 11px;
+      font-size: 0.65vw;
       transition: all 0.2s;
       letter-spacing: 0.1em;
     }
@@ -215,28 +221,39 @@
       box-shadow: 0 0 15px rgba(255, 120, 0, 0.5);
     }
     
-    /* ファイル入力 */
+    /* ファイル入力 - 完全修正版 */
     .file-input-wrapper {
       position: relative;
       display: inline-block;
+      overflow: hidden;
+    }
+    
+    .file-input-wrapper span {
+      display: block;
+      pointer-events: none;
+      position: relative;
+      z-index: 1;
     }
     
     .file-input-wrapper input[type="file"] {
       position: absolute;
-      opacity: 0;
+      top: 0;
+      left: 0;
       width: 100%;
       height: 100%;
+      opacity: 0;
       cursor: pointer;
+      z-index: 2;
     }
     
     /* ステータスインジケーター */
     .status-indicator {
       display: inline-block;
-      width: 8px;
-      height: 8px;
+      width: 0.5vw;
+      height: 0.5vw;
       border-radius: 50%;
       background: #333;
-      margin-right: 8px;
+      margin-right: 0.5vw;
       animation: statusBlink 2s infinite;
     }
     
@@ -253,25 +270,103 @@
     /* グリッドレイアウト */
     .grid-layout {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(15vw, 1fr));
+      gap: 1.5vw;
     }
     
-    /* レスポンシブ */
-    @media (max-width: 768px) {
+    /* レスポンシブ - タブレット */
+    @media (max-width: 1024px) {
       #control-panel {
-        font-size: 10px;
-        padding: 10px;
+        height: 22vh;
+        font-size: 1vw;
+      }
+      
+      .panel-title {
+        font-size: 1.2vw;
       }
       
       .control-label {
-        min-width: 120px;
-        font-size: 10px;
+        min-width: 12vw;
+        font-size: 1vw;
       }
       
       button, .file-input-wrapper {
-        padding: 6px 12px;
-        font-size: 10px;
+        padding: 0.8vh 1.5vw;
+        font-size: 1vw;
+      }
+      
+      .corner-ui {
+        font-size: 1vw;
+      }
+      
+      .corner-bracket {
+        font-size: 1.5vw;
+      }
+      
+      input[type="range"]::-webkit-slider-thumb {
+        width: 1.2vw;
+        height: 1.2vw;
+      }
+      
+      input[type="range"]::-moz-range-thumb {
+        width: 1.2vw;
+        height: 1.2vw;
+      }
+      
+      .status-indicator {
+        width: 0.8vw;
+        height: 0.8vw;
+      }
+    }
+    
+    /* レスポンシブ - スマートフォン */
+    @media (max-width: 768px) {
+      #control-panel {
+        height: 30vh;
+        font-size: 1.8vw;
+        padding: 1.5vh 2vw;
+      }
+      
+      .panel-title {
+        font-size: 2vw;
+      }
+      
+      .control-label {
+        min-width: 20vw;
+        font-size: 1.8vw;
+      }
+      
+      button, .file-input-wrapper {
+        padding: 1vh 2vw;
+        font-size: 1.8vw;
+      }
+      
+      .corner-ui {
+        font-size: 1.5vw;
+      }
+      
+      .corner-bracket {
+        font-size: 2.5vw;
+      }
+      
+      .grid-layout {
+        grid-template-columns: 1fr;
+        gap: 2vh;
+      }
+      
+      input[type="range"]::-webkit-slider-thumb {
+        width: 2vw;
+        height: 2vw;
+      }
+      
+      input[type="range"]::-moz-range-thumb {
+        width: 2vw;
+        height: 2vw;
+      }
+      
+      .status-indicator {
+        width: 1.5vw;
+        height: 1.5vw;
       }
     }
   </style>
@@ -307,12 +402,12 @@
           <span>SELECT AUDIO FILE</span>
           <input type="file" id="fileInput" accept="audio/*">
         </div>
-        <div class="button-group" style="margin-top: 10px;">
+        <div class="button-group" style="margin-top: 1vh;">
           <button id="playBtn">▶ PLAY</button>
           <button id="pauseBtn">⏸ PAUSE</button>
           <button id="stopBtn">⏹ STOP</button>
         </div>
-        <div style="margin-top: 10px; color: var(--gray);">
+        <div style="margin-top: 1vh; color: var(--gray); font-size: 0.65vw;">
           <span class="status-indicator" id="audioStatus"></span>
           <span id="audioInfo">No audio loaded</span>
         </div>
@@ -329,7 +424,7 @@
           <button class="mode-btn" data-mode="4">MOVING AVG</button>
           <button class="mode-btn" data-mode="5">GAUSSIAN</button>
         </div>
-        <div style="margin-top: 10px;">
+        <div style="margin-top: 1vh;">
           <button id="analyzerBtn">ANALYZER OVERLAY</button>
         </div>
       </div>
@@ -375,6 +470,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/addons/p5.sound.min.js"></script>
   
   <!-- ビジュアライザーコア -->
-  <script src="sketch.js"></script>
+  <script src="visualizer.js"></script>
 </body>
 </html>
