@@ -1,8 +1,11 @@
-// Audio Visualizer - Cyber Style Edition
-// スムージング + アナライザーモード搭載版
+
+// Audio Visualizer - Spectrum Analyzer Pro V3
+// Optimized for Low Latency, High Stability, and Performance
 
 let n = 512;
-let GLP_Hz_dB = [];
+let GLP_Hz_dB = []; 
+let raw_GLP = [];   
+let binMap = [];    // 高速化のためのプリ計算インデックス
 let x, y;
 let spacing = 0.2;
 let Limier = 0.7;
@@ -14,20 +17,18 @@ let Smooth = 10;
 let prevRMS = [];
 let analyzer = null;
 
-let LogBias_Hz = 1.0;
+const LogBias_Hz = 1.0;
 let minFreq = 20;
 let maxFreq = 20000;
 
 let gAccel = 2000.0;
 let vel = [];
-let minVisible = 0.001;
-
-let sampleRate = 44100;
+let minVisible = 0.0001; // 精度向上のため閾値を微調整
 
 let smoothingMode = 0;
 let analyzerMode = false;
-let splineM = [];
 
+let bgGraphics; 
 const ORANGE = [255, 120, 0];
 
 // システムオーディオ用の変数
@@ -37,9 +38,11 @@ let systemAudioAnalyser = null;
 let isSystemAudioMode = false;
 let systemAudioData = null;
 
-if (typeof Math.log10 !== 'function') {
-  Math.log10 = function(x) { return Math.log(x) / Math.LN10; };
-}
+let currentPanelHeight = 0;
+let isResizing = false;
+
+// 安全なログ関数
+const safeLog10 = (num) => (num <= 0) ? -20 : Math.log(num) / Math.LN10;
 
 function setup() {
   y = windowHeight;
@@ -47,33 +50,70 @@ function setup() {
   let canvas = createCanvas(x, y);
   canvas.parent('visualizer-canvas');
 
+  // ファイル再生用FFT (p5.jsのデフォルトを使用)
   fft = new p5.FFT(0.8, 8192);
   analyzer = new p5.Amplitude();
-  analyzer.setInput();
+  
+  reinitArrays();
+  
+  currentPanelHeight = windowHeight / 3;
+  updateUIPosition();
 
-  GLP_Hz_dB = new Array(n).fill(0);
-  prevRMS = new Array(n).fill(0);
-  vel = new Array(n).fill(0);
-  splineM = new Array(n).fill(0);
+  bgGraphics = createGraphics(windowWidth, windowHeight);
+  updateBackgroundGraphics();
+}
+
+/**
+ * 配列の初期化とプリ計算マップの更新
+ */
+function reinitArrays() {
+  GLP_Hz_dB = new Float32Array(n).fill(0);
+  raw_GLP = new Float32Array(n).fill(0);
+  prevRMS = new Float32Array(n).fill(0);
+  vel = new Float32Array(n).fill(0);
+  updateBinMap();
+}
+
+/**
+ * 周波数からFFTビンへのマッピングをプリ計算し、メインループを高速化
+ */
+function updateBinMap() {
+  binMap = new Int32Array(n);
+  let ctx = getAudioContext();
+  if (!ctx) return;
+  
+  let sr = ctx.sampleRate;
+  let currentFFTSize = isSystemAudioMode ? (systemAudioAnalyser ? systemAudioAnalyser.fftSize : 8192) : 8192 * 2;
+  
+  let logMin = safeLog10(minFreq);
+  let logMax = safeLog10(maxFreq);
+  
+  for (let i = 0; i < n; i++) {
+    let t = i / n;
+    let freq = Math.pow(10, logMin + t * (logMax - logMin));
+    let bin = Math.round(freq * currentFFTSize / sr);
+    binMap[i] = bin;
+  }
 }
 
 function draw() {
+  // 背景描画
   background(10, 10, 10);
-  Audio();
   
-  switch (smoothingMode) {
-    case 0: WhiteRect(); break;
-    case 1: drawLinearInterpolation(); break;
-    case 2: drawCatmullRom(); break;
-    case 3: drawCubicSpline(); break;
-    case 4: drawMovingAverage(); break;
-    case 5: drawGaussianSmooth(); break;
-    default: WhiteRect();
-  }
-  
+  // アナライザー表示（キャッシュされたバッファを使用）
   if (analyzerMode) {
-    drawAnalyzerOverlay();
+    image(bgGraphics, 0, 0);
   }
+
+  // オーディオデータの更新（計算処理）
+  AudioUpdate();
+  
+  // 描画の中心計算
+  let drawingAreaHeight = windowHeight - currentPanelHeight;
+  let centerY = drawingAreaHeight / 2;
+
+  // グラフ描画
+  drawBars(centerY);
   
   updateFPS();
 }
@@ -82,1027 +122,386 @@ function windowResized() {
   y = windowHeight;
   x = windowWidth;
   resizeCanvas(x, y);
+  
+  currentPanelHeight = Math.min(currentPanelHeight, windowHeight / 3);
+  updateUIPosition();
+  
+  bgGraphics.resizeCanvas(x, y);
+  updateBackgroundGraphics();
+  updateBinMap();
 }
 
-function freqToBin(freq, fftSize, sr) {
-  return Math.round(freq * fftSize / sr);
-}
-
-function Audio() {
+/**
+ * オーディオ信号の解析とデータスムージング
+ */
+function AudioUpdate() {
   let dt = Math.max(0.000001, deltaTime / 1000.0);
+  let spectrum;
 
-  // システムオーディオモードの場合
+  // ソースの確認とデータ取得
   if (isSystemAudioMode && systemAudioAnalyser && systemAudioData) {
     systemAudioAnalyser.getByteFrequencyData(systemAudioData);
-    
-    let spectrum = systemAudioData;
-    let fftSize = systemAudioAnalyser.fftSize;
-    
-    let sr = getAudioContext().sampleRate;
-
-    let logMinFreq = Math.log10(minFreq);
-    let logMaxFreq = Math.log10(maxFreq);
-
-    let freqEdges = new Array(n + 1);
-    for (let k = 0; k <= n; k++) {
-      let t = k / n;
-      t = Math.pow(t, LogBias_Hz);
-      let logFreq = logMinFreq + t * (logMaxFreq - logMinFreq);
-      freqEdges[k] = Math.pow(10, logFreq);
-    }
-
-    let rawRMS = new Array(n);
-    let maxRMS = 0;
-
-    for (let i = 0; i < n; i++) {
-      let startFreq = freqEdges[i];
-      let endFreq = freqEdges[i + 1];
-      
-      let startBin = freqToBin(startFreq, fftSize, sr);
-      let endBin = freqToBin(endFreq, fftSize, sr);
-      
-      startBin = Math.max(0, Math.min(startBin, spectrum.length - 1));
-      endBin = Math.max(startBin + 1, Math.min(endBin, spectrum.length));
-
-      let sum = 0;
-      let count = 0;
-      
-      for (let j = startBin; j < endBin; j++) {
-        sum += spectrum[j] * spectrum[j];
-        count++;
-      }
-      
-      if (count === 0) count = 1;
-      
-      rawRMS[i] = Math.sqrt(sum / count) / 255;
-      maxRMS = Math.max(maxRMS, rawRMS[i]);
-    }
-
-    if (maxRMS < 0.001) maxRMS = 1;
-
-    for (let i = 0; i < n; i++) {
-      let rms = rawRMS[i] / maxRMS;
-      rms = rms * rms;
-
-      let alpha = 1 - Math.exp(-deltaTime / Smooth);
-      let smoothRMS = prevRMS[i] + alpha * (rms - prevRMS[i]);
-      prevRMS[i] = smoothRMS;
-
-      let targetHeight = 0;
-      if (smoothRMS >= minVisible) {
-        targetHeight = smoothRMS * (Limier * y / 2);
-      }
-
-      GLP_Hz_dB[i] = targetHeight;
-      vel[i] = 0;
-    }
-    
-    if (smoothingMode === 3) {
-      computeCubicSplineM();
-    }
-    
-    return; // システムオーディオ処理完了
-  }
-
-  // 通常のファイル再生モード
-  if (soundFile && soundFile.isLoaded && soundFile.isLoaded() && soundFile.isPlaying && soundFile.isPlaying()) {
-    let spectrum = fft.analyze();
-    let fftSize = spectrum.length * 2;
-    
-    let sr = sampleRate;
-    if (getAudioContext && getAudioContext()) {
-      sr = getAudioContext().sampleRate;
-    }
-
-    let logMinFreq = Math.log10(minFreq);
-    let logMaxFreq = Math.log10(maxFreq);
-
-    let freqEdges = new Array(n + 1);
-    for (let k = 0; k <= n; k++) {
-      let t = k / n;
-      t = Math.pow(t, LogBias_Hz);
-      let logFreq = logMinFreq + t * (logMaxFreq - logMinFreq);
-      freqEdges[k] = Math.pow(10, logFreq);
-    }
-
-    let rawRMS = new Array(n);
-    let maxRMS = 0;
-
-    for (let i = 0; i < n; i++) {
-      let startFreq = freqEdges[i];
-      let endFreq = freqEdges[i + 1];
-      
-      let startBin = freqToBin(startFreq, fftSize, sr);
-      let endBin = freqToBin(endFreq, fftSize, sr);
-      
-      startBin = Math.max(0, Math.min(startBin, spectrum.length - 1));
-      endBin = Math.max(startBin + 1, Math.min(endBin, spectrum.length));
-
-      let sum = 0;
-      let count = 0;
-      
-      for (let j = startBin; j < endBin; j++) {
-        sum += spectrum[j] * spectrum[j];
-        count++;
-      }
-      
-      if (count === 0) count = 1;
-      
-      rawRMS[i] = Math.sqrt(sum / count) / 255;
-      maxRMS = Math.max(maxRMS, rawRMS[i]);
-    }
-
-    if (maxRMS < 0.001) maxRMS = 1;
-
-    for (let i = 0; i < n; i++) {
-      let rms = rawRMS[i] / maxRMS;
-      rms = rms * rms;
-
-      let alpha = 1 - Math.exp(-deltaTime / Smooth);
-      let smoothRMS = prevRMS[i] + alpha * (rms - prevRMS[i]);
-      prevRMS[i] = smoothRMS;
-
-      let targetHeight = 0;
-      if (smoothRMS >= minVisible) {
-        targetHeight = smoothRMS * (Limier * y / 2);
-      }
-
-      GLP_Hz_dB[i] = targetHeight;
-      vel[i] = 0;
-    }
-    
-    if (smoothingMode === 3) {
-      computeCubicSplineM();
-    }
-    
+    spectrum = systemAudioData;
+  } else if (soundFile && soundFile.isLoaded() && soundFile.isPlaying()) {
+    spectrum = fft.analyze();
   } else {
-    // 再生していない時は徐々に減衰
+    // 信号なし：物理シミュレーションによる減衰
     for (let i = 0; i < n; i++) {
       vel[i] += gAccel * dt;
       let newH = GLP_Hz_dB[i] - vel[i] * dt;
-
-      if (newH <= 0) {
-        GLP_Hz_dB[i] = 0;
-        vel[i] = 0;
-      } else {
-        GLP_Hz_dB[i] = newH;
-      }
+      GLP_Hz_dB[i] = newH <= 0 ? 0 : newH;
+      if (GLP_Hz_dB[i] === 0) vel[i] = 0;
     }
+    return;
+  }
+
+  let drawingAreaHeight = windowHeight - currentPanelHeight;
+  let alpha = 1 - Math.exp(-deltaTime / Smooth);
+  let specLen = spectrum.length;
+
+  // ステップ1: プリ計算されたbinMapを使用して高速に生データを抽出
+  for (let i = 0; i < n; i++) {
+    let bin = binMap[i];
+    // 安全な範囲チェック
+    if (bin >= specLen) bin = specLen - 1;
     
-    if (smoothingMode === 3) {
-      computeCubicSplineM();
-    }
+    let val = spectrum[bin] / 255.0;
+    let rms = val * val; // パワーに変換
+    
+    // 時間軸のスムージング（Temporal）
+    prevRMS[i] = prevRMS[i] + alpha * (rms - prevRMS[i]);
+    
+    // 物理的な高さに変換
+    raw_GLP[i] = (prevRMS[i] >= minVisible) ? prevRMS[i] * (Limier * drawingAreaHeight / 2) : 0;
   }
+
+  // ステップ2: 空間フィルタリング（データ段階でのスムージング）
+  applyDataSmoothing();
 }
 
-function WhiteRect() {
-  drawingContext.shadowBlur = Glow;
-  drawingContext.shadowColor = color(...ORANGE, Alpher);
-
-  fill(...ORANGE, Alpher);
-  noStroke();
-
-  for (let i = 0; i < n; i++) {
-    let barHeight = GLP_Hz_dB[i];
-    let bw = (width / n) * (1 - spacing);
-    let offset = (width / n - bw) / 2;
-    rect(i * (width / n) + offset, y / 2 - barHeight, bw, barHeight * 2);
-  }
-}
-
-function drawLinearInterpolation() {
-  drawingContext.shadowBlur = Glow;
-  drawingContext.shadowColor = color(...ORANGE, Alpher);
-  
-  stroke(...ORANGE, Alpher);
-  strokeWeight(2);
-  noFill();
-  
-  beginShape();
-  for (let i = 0; i < n; i++) {
-    let xPos = (i + 0.5) * (width / n);
-    let yPos = y / 2 - GLP_Hz_dB[i];
-    vertex(xPos, yPos);
-  }
-  endShape();
-  
-  beginShape();
-  for (let i = 0; i < n; i++) {
-    let xPos = (i + 0.5) * (width / n);
-    let yPos = y / 2 + GLP_Hz_dB[i];
-    vertex(xPos, yPos);
-  }
-  endShape();
-  
-  fill(...ORANGE, Alpher * 0.3);
-  noStroke();
-  beginShape();
-  for (let i = 0; i < n; i++) {
-    let xPos = (i + 0.5) * (width / n);
-    vertex(xPos, y / 2 - GLP_Hz_dB[i]);
-  }
-  for (let i = n - 1; i >= 0; i--) {
-    let xPos = (i + 0.5) * (width / n);
-    vertex(xPos, y / 2 + GLP_Hz_dB[i]);
-  }
-  endShape(CLOSE);
-}
-
-function drawCatmullRom() {
-  drawingContext.shadowBlur = Glow;
-  drawingContext.shadowColor = color(...ORANGE, Alpher);
-  
-  stroke(...ORANGE, Alpher);
-  strokeWeight(2);
-  noFill();
-  
-  beginShape();
-  let firstX = 0.5 * (width / n);
-  let firstY = y / 2 - GLP_Hz_dB[0];
-  curveVertex(firstX, firstY);
-  
-  for (let i = 0; i < n; i++) {
-    let xPos = (i + 0.5) * (width / n);
-    let yPos = y / 2 - GLP_Hz_dB[i];
-    curveVertex(xPos, yPos);
-  }
-  
-  let lastX = (n - 0.5) * (width / n);
-  let lastY = y / 2 - GLP_Hz_dB[n - 1];
-  curveVertex(lastX, lastY);
-  endShape();
-  
-  beginShape();
-  firstY = y / 2 + GLP_Hz_dB[0];
-  curveVertex(firstX, firstY);
-  
-  for (let i = 0; i < n; i++) {
-    let xPos = (i + 0.5) * (width / n);
-    let yPos = y / 2 + GLP_Hz_dB[i];
-    curveVertex(xPos, yPos);
-  }
-  
-  lastY = y / 2 + GLP_Hz_dB[n - 1];
-  curveVertex(lastX, lastY);
-  endShape();
-  
-  fill(...ORANGE, Alpher * 0.3);
-  noStroke();
-  
-  let points = [];
-  let segments = 5;
-  
-  for (let i = 0; i < n - 1; i++) {
-    for (let t = 0; t < segments; t++) {
-      let tt = t / segments;
-      let px = catmullRomInterp(
-        (Math.max(0, i - 1) + 0.5) * (width / n),
-        (i + 0.5) * (width / n),
-        (i + 1 + 0.5) * (width / n),
-        (Math.min(n - 1, i + 2) + 0.5) * (width / n),
-        tt
-      );
-      let py = catmullRomInterp(
-        GLP_Hz_dB[Math.max(0, i - 1)],
-        GLP_Hz_dB[i],
-        GLP_Hz_dB[i + 1],
-        GLP_Hz_dB[Math.min(n - 1, i + 2)],
-        tt
-      );
-      points.push({ x: px, y: py });
-    }
-  }
-  points.push({ x: (n - 0.5) * (width / n), y: GLP_Hz_dB[n - 1] });
-  
-  beginShape();
-  for (let p of points) {
-    vertex(p.x, y / 2 - p.y);
-  }
-  for (let i = points.length - 1; i >= 0; i--) {
-    vertex(points[i].x, y / 2 + points[i].y);
-  }
-  endShape(CLOSE);
-}
-
-function catmullRomInterp(p0, p1, p2, p3, t) {
-  let t2 = t * t;
-  let t3 = t2 * t;
-  return 0.5 * (
-    (2 * p1) +
-    (-p0 + p2) * t +
-    (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
-    (-p0 + 3 * p1 - 3 * p2 + p3) * t3
-  );
-}
-
-function computeCubicSplineM() {
-  let nn = n;
-  let h = new Array(nn - 1);
-  let alpha = new Array(nn - 1);
-  let l = new Array(nn);
-  let mu = new Array(nn);
-  let z = new Array(nn);
-  
-  let dx = width / nn;
-  for (let i = 0; i < nn - 1; i++) {
-    h[i] = dx;
-  }
-  
-  for (let i = 1; i < nn - 1; i++) {
-    alpha[i] = (3 / h[i]) * (GLP_Hz_dB[i + 1] - GLP_Hz_dB[i]) - 
-               (3 / h[i - 1]) * (GLP_Hz_dB[i] - GLP_Hz_dB[i - 1]);
-  }
-  
-  l[0] = 1;
-  mu[0] = 0;
-  z[0] = 0;
-  
-  for (let i = 1; i < nn - 1; i++) {
-    l[i] = 2 * (h[i - 1] + h[i]) - h[i - 1] * mu[i - 1];
-    if (Math.abs(l[i]) < 0.0001) l[i] = 0.0001;
-    mu[i] = h[i] / l[i];
-    z[i] = (alpha[i] - h[i - 1] * z[i - 1]) / l[i];
-  }
-  
-  l[nn - 1] = 1;
-  z[nn - 1] = 0;
-  splineM[nn - 1] = 0;
-  
-  for (let j = nn - 2; j >= 0; j--) {
-    splineM[j] = z[j] - mu[j] * splineM[j + 1];
-  }
-}
-
-function cubicSplineInterp(i, t) {
-  if (i < 0) i = 0;
-  if (i >= n - 1) i = n - 2;
-  
-  let h = width / n;
-  let a = GLP_Hz_dB[i];
-  let b = (GLP_Hz_dB[i + 1] - GLP_Hz_dB[i]) / h - h * (2 * splineM[i] + splineM[i + 1]) / 3;
-  let c = splineM[i];
-  let d = (splineM[i + 1] - splineM[i]) / (3 * h);
-  
-  let x = t * h;
-  return a + b * x + c * x * x + d * x * x * x;
-}
-
-function drawCubicSpline() {
-  drawingContext.shadowBlur = Glow;
-  drawingContext.shadowColor = color(...ORANGE, Alpher);
-  
-  let points = [];
-  let segments = 8;
-  
-  for (let i = 0; i < n - 1; i++) {
-    for (let s = 0; s < segments; s++) {
-      let t = s / segments;
-      let xPos = (i + 0.5 + t) * (width / n);
-      let yVal = cubicSplineInterp(i, t);
-      if (yVal < 0) yVal = 0;
-      points.push({ x: xPos, y: yVal });
-    }
-  }
-  points.push({ x: (n - 0.5) * (width / n), y: GLP_Hz_dB[n - 1] });
-  
-  stroke(...ORANGE, Alpher);
-  strokeWeight(2);
-  noFill();
-  
-  beginShape();
-  for (let p of points) {
-    vertex(p.x, y / 2 - p.y);
-  }
-  endShape();
-  
-  beginShape();
-  for (let p of points) {
-    vertex(p.x, y / 2 + p.y);
-  }
-  endShape();
-  
-  fill(...ORANGE, Alpher * 0.3);
-  noStroke();
-  
-  beginShape();
-  vertex(points[0].x, y / 2);
-  for (let p of points) {
-    vertex(p.x, y / 2 - p.y);
-  }
-  vertex(points[points.length - 1].x, y / 2);
-  for (let i = points.length - 1; i >= 0; i--) {
-    vertex(points[i].x, y / 2 + points[i].y);
-  }
-  endShape(CLOSE);
-}
-
-function drawMovingAverage() {
-  drawingContext.shadowBlur = Glow;
-  drawingContext.shadowColor = color(...ORANGE, Alpher);
-  
-  let windowSize = 5;
-  let smoothed = new Array(n);
-  
-  for (let i = 0; i < n; i++) {
-    let sum = 0;
-    let count = 0;
-    for (let j = -Math.floor(windowSize / 2); j <= Math.floor(windowSize / 2); j++) {
-      let idx = i + j;
-      if (idx >= 0 && idx < n) {
-        sum += GLP_Hz_dB[idx];
-        count++;
+/**
+ * 改良部分1: データ数値段階でのスムージング処理
+ */
+function applyDataSmoothing() {
+  switch (smoothingMode) {
+    case 0: // RAW
+      for (let i = 0; i < n; i++) GLP_Hz_dB[i] = raw_GLP[i];
+      break;
+    case 1: // MOVING AVG L
+      for (let i = 0; i < n; i++) {
+        let prev = (i > 0) ? raw_GLP[i-1] : raw_GLP[i];
+        let next = (i < n - 1) ? raw_GLP[i+1] : raw_GLP[i];
+        GLP_Hz_dB[i] = (prev + raw_GLP[i] + next) / 3;
       }
-    }
-    smoothed[i] = sum / count;
+      break;
+    case 2: // MOVING AVG H
+      for (let i = 0; i < n; i++) {
+        let sum = 0, count = 0;
+        for (let j = -3; j <= 3; j++) {
+          let idx = i + j;
+          if (idx >= 0 && idx < n) { sum += raw_GLP[idx]; count++; }
+        }
+        GLP_Hz_dB[i] = sum / count;
+      }
+      break;
+    case 3: // GAUSSIAN
+      const kernel = [0.061, 0.242, 0.383, 0.242, 0.061];
+      for (let i = 0; i < n; i++) {
+        let sum = 0;
+        for (let j = -2; j <= 2; j++) {
+          let idx = (i + j < 0) ? 0 : (i + j >= n) ? n - 1 : i + j;
+          sum += raw_GLP[idx] * kernel[j + 2];
+        }
+        GLP_Hz_dB[i] = sum;
+      }
+      break;
+    case 4: // INTERPOLATE (Spatial blending)
+      for (let i = 0; i < n; i++) {
+        let p = raw_GLP[i];
+        let n_val = (i < n - 1) ? raw_GLP[i+1] : p;
+        GLP_Hz_dB[i] = p * 0.7 + n_val * 0.3;
+      }
+      break;
+    case 5: // TEMPORAL ENHANCED
+      for (let i = 0; i < n; i++) {
+        GLP_Hz_dB[i] = raw_GLP[i] * 1.1; 
+      }
+      break;
   }
-  
-  stroke(...ORANGE, Alpher);
-  strokeWeight(2);
-  noFill();
-  
-  beginShape();
-  let firstX = 0.5 * (width / n);
-  curveVertex(firstX, y / 2 - smoothed[0]);
-  for (let i = 0; i < n; i++) {
-    let xPos = (i + 0.5) * (width / n);
-    curveVertex(xPos, y / 2 - smoothed[i]);
-  }
-  let lastX = (n - 0.5) * (width / n);
-  curveVertex(lastX, y / 2 - smoothed[n - 1]);
-  endShape();
-  
-  beginShape();
-  curveVertex(firstX, y / 2 + smoothed[0]);
-  for (let i = 0; i < n; i++) {
-    let xPos = (i + 0.5) * (width / n);
-    curveVertex(xPos, y / 2 + smoothed[i]);
-  }
-  curveVertex(lastX, y / 2 + smoothed[n - 1]);
-  endShape();
-  
-  fill(...ORANGE, Alpher * 0.3);
-  noStroke();
-  beginShape();
-  for (let i = 0; i < n; i++) {
-    let xPos = (i + 0.5) * (width / n);
-    vertex(xPos, y / 2 - smoothed[i]);
-  }
-  for (let i = n - 1; i >= 0; i--) {
-    let xPos = (i + 0.5) * (width / n);
-    vertex(xPos, y / 2 + smoothed[i]);
-  }
-  endShape(CLOSE);
 }
 
-function drawGaussianSmooth() {
+/**
+ * バーの描画（常に高速な矩形描画を使用）
+ */
+function drawBars(centerY) {
+  if (Alpher <= 0) return;
+  
   drawingContext.shadowBlur = Glow;
-  drawingContext.shadowColor = color(...ORANGE, Alpher);
-  
-  let sigma = 2.0;
-  let kernelRadius = Math.ceil(sigma * 3);
-  let kernel = [];
-  let kernelSum = 0;
-  
-  for (let i = -kernelRadius; i <= kernelRadius; i++) {
-    let g = Math.exp(-(i * i) / (2 * sigma * sigma));
-    kernel.push(g);
-    kernelSum += g;
-  }
-  for (let i = 0; i < kernel.length; i++) {
-    kernel[i] /= kernelSum;
-  }
-  
-  let smoothed = new Array(n);
-  for (let i = 0; i < n; i++) {
-    let sum = 0;
-    for (let k = 0; k < kernel.length; k++) {
-      let idx = i + (k - kernelRadius);
-      if (idx < 0) idx = 0;
-      if (idx >= n) idx = n - 1;
-      sum += GLP_Hz_dB[idx] * kernel[k];
-    }
-    smoothed[i] = sum;
-  }
-  
-  stroke(...ORANGE, Alpher);
-  strokeWeight(2);
-  noFill();
-  
-  beginShape();
-  let firstX = 0.5 * (width / n);
-  curveVertex(firstX, y / 2 - smoothed[0]);
-  for (let i = 0; i < n; i++) {
-    let xPos = (i + 0.5) * (width / n);
-    curveVertex(xPos, y / 2 - smoothed[i]);
-  }
-  let lastX = (n - 0.5) * (width / n);
-  curveVertex(lastX, y / 2 - smoothed[n - 1]);
-  endShape();
-  
-  beginShape();
-  curveVertex(firstX, y / 2 + smoothed[0]);
-  for (let i = 0; i < n; i++) {
-    let xPos = (i + 0.5) * (width / n);
-    curveVertex(xPos, y / 2 + smoothed[i]);
-  }
-  curveVertex(lastX, y / 2 + smoothed[n - 1]);
-  endShape();
-  
-  fill(...ORANGE, Alpher * 0.3);
+  drawingContext.shadowColor = `rgba(${ORANGE[0]}, ${ORANGE[1]}, ${ORANGE[2]}, ${Alpher/255})`;
+  fill(ORANGE[0], ORANGE[1], ORANGE[2], Alpher);
   noStroke();
-  beginShape();
+
+  const barW = x / n;
+  const bw = barW * (1 - spacing);
+  const offset = (barW - bw) / 2;
+
   for (let i = 0; i < n; i++) {
-    let xPos = (i + 0.5) * (width / n);
-    vertex(xPos, y / 2 - smoothed[i]);
+    const h = GLP_Hz_dB[i];
+    if (h > 0) {
+      rect(i * barW + offset, centerY - h, bw, h * 2);
+    }
   }
-  for (let i = n - 1; i >= 0; i--) {
-    let xPos = (i + 0.5) * (width / n);
-    vertex(xPos, y / 2 + smoothed[i]);
-  }
-  endShape(CLOSE);
 }
 
-function drawAnalyzerOverlay() {
-  noFill();
-  stroke(255, 255, 255, 100);
-  strokeWeight(1);
+/**
+ * 改良部分2: グリッド描画をオフ画面バッファへキャッシュ
+ */
+function updateBackgroundGraphics() {
+  bgGraphics.clear();
   
-  let leftMargin = 60;
-  let rightMargin = 20;
-  let topMargin = 50;
-  let bottomMargin = 50;
+  let drawH = windowHeight - currentPanelHeight;
+  if (drawH <= 50) return;
+
+  bgGraphics.noFill();
+  bgGraphics.stroke(255, 255, 255, 40);
+  bgGraphics.strokeWeight(1);
   
-  let graphLeft = leftMargin;
-  let graphRight = width - rightMargin;
-  let graphTop = topMargin;
-  let graphBottom = height - bottomMargin;
-  let graphWidth = graphRight - graphLeft;
-  let graphHeight = graphBottom - graphTop;
+  let lm = 60, rm = 20, tm = 50, bm = 50;
+  let gL = lm, gR = x - rm, gT = tm, gB = drawH - bm;
+  let gW = gR - gL, gH = gB - gT;
   
-  stroke(255, 255, 255, 150);
-  strokeWeight(1);
-  noFill();
-  rect(graphLeft, graphTop, graphWidth, graphHeight);
+  if (gW <= 0 || gH <= 0) return;
+
+  bgGraphics.rect(gL, gT, gW, gH);
   
   let freqMarks = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+  let logMin = safeLog10(minFreq), logMax = safeLog10(maxFreq);
   
-  textAlign(CENTER, TOP);
-  textSize(10);
-  fill(255, 255, 255, 200);
-  noStroke();
-  
-  let logMin = Math.log10(minFreq);
-  let logMax = Math.log10(maxFreq);
-  
-  for (let freq of freqMarks) {
-    if (freq < minFreq || freq > maxFreq) continue;
-    
-    let logFreq = Math.log10(freq);
-    let t = (logFreq - logMin) / (logMax - logMin);
-    t = Math.pow(t, 1 / LogBias_Hz);
-    
-    let xPos = graphLeft + t * graphWidth;
-    
-    stroke(255, 255, 255, 30);
-    strokeWeight(1);
-    line(xPos, graphTop, xPos, graphBottom);
-    
-    noStroke();
-    fill(255, 255, 255, 200);
-    let label;
-    if (freq >= 1000) {
-      label = (freq / 1000) + 'k';
-    } else {
-      label = freq + '';
-    }
-    text(label, xPos, graphBottom + 5);
+  bgGraphics.textAlign(CENTER, TOP);
+  bgGraphics.textSize(10);
+  for (let f of freqMarks) {
+    if (f < minFreq || f > maxFreq) continue;
+    let t = (safeLog10(f) - logMin) / (logMax - logMin);
+    let px = gL + t * gW;
+    bgGraphics.stroke(255, 255, 255, 20);
+    bgGraphics.line(px, gT, px, gB);
+    bgGraphics.noStroke();
+    bgGraphics.fill(255, 255, 255, 120);
+    bgGraphics.text(f >= 1000 ? (f / 1000) + 'k' : f, px, gB + 8);
   }
   
-  textAlign(CENTER, TOP);
-  text('Hz', graphLeft + graphWidth / 2, graphBottom + 20);
-  
-  let dbMin = -60;
-  let dbMax = 0;
-  let dbMarks = [0, -6, -12, -18, -24, -30, -36, -42, -48, -54, -60];
-  
-  textAlign(RIGHT, CENTER);
-  
+  let dbMarks = [0, -12, -24, -36, -48, -60];
+  bgGraphics.textAlign(RIGHT, CENTER);
   for (let db of dbMarks) {
-    let t = (db - dbMax) / (dbMin - dbMax);
-    let yPos = graphTop + t * (graphHeight / 2);
-    let yPosMirror = graphTop + graphHeight / 2 + (1 - t) * (graphHeight / 2);
-    
-    stroke(255, 255, 255, 30);
-    strokeWeight(1);
-    line(graphLeft, yPos, graphRight, yPos);
-    
-    if (db !== 0) {
-      line(graphLeft, yPosMirror, graphRight, yPosMirror);
-    }
-    
-    noStroke();
-    fill(255, 255, 255, 200);
-    text(db + ' dB', graphLeft - 5, yPos);
-  }
-  
-  stroke(255, 120, 0, 100);
-  strokeWeight(2);
-  line(graphLeft, graphTop + graphHeight / 2, graphRight, graphTop + graphHeight / 2);
-  
-  push();
-  translate(15, graphTop + graphHeight / 2);
-  rotate(-HALF_PI);
-  textAlign(CENTER, CENTER);
-  fill(255, 255, 255, 200);
-  text('dBFS', 0, 0);
-  pop();
-  
-  if (soundFile && soundFile.isLoaded && soundFile.isLoaded()) {
-    textAlign(LEFT, TOP);
-    textSize(11);
-    fill(255, 255, 255, 200);
-    noStroke();
-    
-    let status = soundFile.isPlaying() ? '▶ Playing' : '■ Stopped';
-    let currentTime = soundFile.currentTime ? soundFile.currentTime() : 0;
-    let duration = soundFile.duration ? soundFile.duration() : 0;
-    
-    let timeStr = formatTime(currentTime) + ' / ' + formatTime(duration);
-    
-    text(status + '  ' + timeStr, graphLeft, 20);
-    
-    let sr = sampleRate;
-    if (getAudioContext && getAudioContext()) {
-      sr = getAudioContext().sampleRate;
-    }
-    textAlign(RIGHT, TOP);
-    text('FFT: 8192 | SR: ' + sr + ' Hz', graphRight, 20);
+    let t = db / -60;
+    let py = gT + t * (gH / 2);
+    let pyMirror = gT + gH / 2 + (1 - t) * (gH / 2);
+    bgGraphics.stroke(255, 255, 255, 20);
+    bgGraphics.line(gL, py, gR, py);
+    if (db !== 0) bgGraphics.line(gL, pyMirror, gR, pyMirror);
+    bgGraphics.noStroke();
+    bgGraphics.fill(255, 255, 255, 120);
+    bgGraphics.text(db + 'dB', gL - 10, py);
   }
 }
 
-function formatTime(seconds) {
-  let mins = Math.floor(seconds / 60);
-  let secs = Math.floor(seconds % 60);
-  return mins + ':' + (secs < 10 ? '0' : '') + secs;
-}
-
-let lastFPSUpdate = 0;
-let frameCountFPS = 0;
 function updateFPS() {
-  frameCountFPS++;
-  if (millis() - lastFPSUpdate > 1000) {
+  if (frameCount % 30 === 0) {
     let fpsEl = document.getElementById('fpsDisplay');
-    if (fpsEl) {
-      fpsEl.textContent = `FPS: ${frameCountFPS}`;
-    }
-    frameCountFPS = 0;
-    lastFPSUpdate = millis();
+    if (fpsEl) fpsEl.textContent = `FPS: ${Math.round(frameRate())}`;
   }
 }
 
-// UI初期化（DOMContentLoadedで確実に実行）
+// --- UI Logic ---
+
+document.addEventListener('mousedown', (e) => {
+  if (e.target.id === 'panel-resizer') isResizing = true;
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (isResizing) {
+    let newH = windowHeight - e.clientY;
+    currentPanelHeight = Math.max(0, Math.min(newH, windowHeight / 3));
+    updateUIPosition();
+    updateBackgroundGraphics();
+  }
+});
+
+document.addEventListener('mouseup', () => { isResizing = false; });
+
+function updateUIPosition() {
+  const panel = document.getElementById('control-panel');
+  const resizer = document.getElementById('panel-resizer');
+  if (panel && resizer) {
+    panel.style.height = `${currentPanelHeight}px`;
+    resizer.style.bottom = `${currentPanelHeight}px`;
+  }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-  console.log('UI初期化開始...');
-  
   const fileInput = document.getElementById('fileInput');
   const playBtn = document.getElementById('playBtn');
   const pauseBtn = document.getElementById('pauseBtn');
   const stopBtn = document.getElementById('stopBtn');
   const analyzerBtn = document.getElementById('analyzerBtn');
-  const modeButtons = document.querySelectorAll('.mode-btn');
-  
-  if (!fileInput || !playBtn || !pauseBtn || !stopBtn || !analyzerBtn) {
-    console.error('必要なUI要素が見つかりません');
-    return;
-  }
-  
-  console.log('UI要素が見つかりました。イベントリスナーを設定します。');
+  const sysAudioBtn = document.getElementById('systemAudioBtn');
   
   fileInput.addEventListener('change', function(e) {
-    console.log('ファイルが選択されました');
     const file = e.target.files[0];
-    if (isSystemAudioMode) {
-    stopSystemAudio();
-    const systemAudioBtn = document.getElementById('systemAudioBtn');
-    if (systemAudioBtn) {
-      systemAudioBtn.classList.remove('active');
-      systemAudioBtn.textContent = '🔊 SYSTEM AUDIO';
-    }
-    updateAudioStatus(false, 'System audio stopped');
-  }
     if (file) {
-      // 既存の音声を停止・破棄
-      if (soundFile) {
-        if (soundFile.isPlaying && soundFile.isPlaying()) {
-          soundFile.stop();
-        }
-        soundFile.disconnect();
-        soundFile = null;
-      }
-      
-      // AudioContextを開始（ユーザーインタラクション時に必要）
+      if (soundFile) { soundFile.stop(); soundFile.disconnect(); }
       userStartAudio();
+      updateAudioStatus(false, "LOADING...");
       
-      // ファイル名を先に表示
-      const fileName = file.name;
-      updateAudioStatus(false, fileName);
-      document.getElementById('audioInfo').textContent = fileName + ' (loading...)';
-      
-      // BlobURLを作成してloadSoundで読み込む
-      const blobUrl = URL.createObjectURL(file);
-      
-      soundFile = loadSound(
-        blobUrl,
-        // 成功コールバック
-        function() {
-          console.log('音声ファイル読み込み完了:', fileName);
-          
-          // FFTとAnalyzerに接続
-          fft.setInput(soundFile);
-          analyzer.setInput(soundFile);
-          
-          // BlobURLを解放
-          URL.revokeObjectURL(blobUrl);
-          
-          updateAudioStatus(false, fileName);
-          console.log('長さ:', soundFile.duration(), '秒');
-        },
-        // エラーコールバック
-        function(err) {
-          console.error('音声ファイル読み込みエラー:', err);
-          URL.revokeObjectURL(blobUrl);
-          document.getElementById('audioInfo').textContent = 'Error loading file';
-        },
-        // 読み込み中コールバック（進捗）
-        function(progress) {
-          console.log('読み込み中...', Math.round(progress * 100) + '%');
-        }
-      );
+      let blobUrl = URL.createObjectURL(file);
+      soundFile = loadSound(blobUrl, () => {
+        fft.setInput(soundFile);
+        URL.revokeObjectURL(blobUrl);
+        updateAudioStatus(false, file.name);
+        updateBinMap();
+      }, (err) => {
+        updateAudioStatus(false, "LOAD ERROR");
+      });
     }
   });
+
+  playBtn.addEventListener('click', () => {
+    let ctx = getAudioContext();
+    if (ctx.state === 'suspended') ctx.resume();
+    if (soundFile && soundFile.isLoaded()) {
+      if (isSystemAudioMode) stopSystemAudio();
+      soundFile.play();
+      updateAudioStatus(true);
+    }
+  });
+
+  pauseBtn.addEventListener('click', () => { if (soundFile && soundFile.isPlaying()) { soundFile.pause(); updateAudioStatus(false); } });
+  stopBtn.addEventListener('click', () => { if (soundFile) { soundFile.stop(); updateAudioStatus(false); } });
   
-  playBtn.addEventListener('click', function() {
-    console.log('再生ボタンがクリックされました');
-    
+  sysAudioBtn.addEventListener('click', async () => {
     if (isSystemAudioMode) {
       stopSystemAudio();
-      const systemAudioBtn = document.getElementById('systemAudioBtn');
-      if (systemAudioBtn) {
-        systemAudioBtn.classList.remove('active');
-        systemAudioBtn.textContent = '🔊 SYSTEM AUDIO';
-      }
-      updateAudioStatus(false, 'System audio stopped');
-    }
-
-    // AudioContextを開始
-    userStartAudio();
-    
-    if (soundFile && soundFile.isLoaded && soundFile.isLoaded()) {
-      if (!soundFile.isPlaying()) {
-        soundFile.play();
-        updateAudioStatus(true);
-        console.log('再生開始');
-      }
     } else {
-      console.warn('音声ファイルが読み込まれていません');
-      alert('先に音声ファイルを選択してください');
+      await startSystemAudio();
     }
   });
-  
-  pauseBtn.addEventListener('click', function() {
-    console.log('一時停止ボタンがクリックされました');
-    if (soundFile && soundFile.isLoaded && soundFile.isLoaded() && soundFile.isPlaying()) {
-      soundFile.pause();
-      updateAudioStatus(false);
-    }
-  });
-  
-  stopBtn.addEventListener('click', function() {
-    console.log('停止ボタンがクリックされました');
-    if (soundFile && soundFile.isLoaded && soundFile.isLoaded()) {
-      soundFile.stop();
-      updateAudioStatus(false);
-    }
-  });
-  
-  analyzerBtn.addEventListener('click', function() {
-    console.log('アナライザーボタンがクリックされました');
+
+  analyzerBtn.addEventListener('click', () => {
     analyzerMode = !analyzerMode;
     analyzerBtn.classList.toggle('active', analyzerMode);
-    console.log('アナライザーモード:', analyzerMode);
+    updateBackgroundGraphics();
   });
-  
-  // システムオーディオボタン
-  const systemAudioBtn = document.getElementById('systemAudioBtn');
-  
-  if (systemAudioBtn) {
-    systemAudioBtn.addEventListener('click', async function() {
-      console.log('システムオーディオボタンがクリックされました');
-    
-      if (isSystemAudioMode) {
-        // システムオーディオを停止
-        stopSystemAudio();
-        systemAudioBtn.classList.remove('active');
-        systemAudioBtn.textContent = '🔊 SYSTEM AUDIO';
-        updateAudioStatus(false, 'System audio stopped');
-      } else {
-        // システムオーディオを開始
-        try {
-          if (soundFile && soundFile.isLoaded && soundFile.isLoaded() &&
-              soundFile.isPlaying && soundFile.isPlaying()) {
-            try {
-              soundFile.pause();
-              updateAudioStatus(false);
-              console.log('現在再生中の音声ファイルを一時停止しました');
-            } catch (e) {
-              console.warn('soundFile pause failed:', e);
-            }
-          }
-          await startSystemAudio();
-          systemAudioBtn.classList.add('active');
-          systemAudioBtn.textContent = '🔇 STOP CAPTURE';
-          updateAudioStatus(true, 'System Audio (PC Sound)');
-        } catch (err) {
-          console.error('システムオーディオ取得エラー:', err);
-          alert('システムオーディオの取得に失敗しました。\n\n画面共有ダイアログで「タブ」または「画面全体」を選択し、\n「音声を共有」にチェックを入れてください。');
-        }
-      }
-    });
-  }
 
-  modeButtons.forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      const mode = parseInt(btn.dataset.mode);
-      console.log('スムージングモード変更:', mode);
-      
-      if (smoothingMode === mode) {
-        smoothingMode = 0;
-      } else {
-        smoothingMode = mode;
-      }
-      
-      modeButtons.forEach(function(b) {
-        b.classList.remove('active');
-      });
-      
-      if (smoothingMode !== 0) {
-        btn.classList.add('active');
-      } else {
-        modeButtons[0].classList.add('active');
-      }
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      smoothingMode = parseInt(btn.dataset.mode);
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
     });
   });
-  
-  setupSlider('alphaSlider', 'alphaVal', function(v) { Alpher = v; });
-  setupSlider('spacingSlider', 'spacingVal', function(v) { spacing = v; }, 2);
-  setupSlider('smoothSlider', 'smoothVal', function(v) { Smooth = v; });
-  setupSlider('minFreqSlider', 'minFreqVal', function(v) { minFreq = v; }, 0, ' Hz');
-  setupSlider('maxFreqSlider', 'maxFreqVal', function(v) { maxFreq = v; }, 0, ' Hz');
-  setupSlider('logBiasSlider', 'logBiasVal', function(v) { LogBias_Hz = v; }, 2);
-  
-  updateTime();
-  setInterval(updateTime, 1000);
-  
-  console.log('UI初期化完了');
+
+  setupSlider('alphaSlider', 'alphaVal', (v) => Alpher = v);
+  setupSlider('spacingSlider', 'spacingVal', (v) => spacing = v, 2);
+  setupSlider('smoothSlider', 'smoothVal', (v) => Smooth = v);
+  setupSlider('minFreqSlider', 'minFreqVal', (v) => { minFreq = v; updateBackgroundGraphics(); updateBinMap(); });
+  setupSlider('maxFreqSlider', 'maxFreqVal', (v) => { maxFreq = v; updateBackgroundGraphics(); updateBinMap(); });
+  setupSlider('barCountSlider', 'barCountVal', (v) => { n = parseInt(v); reinitArrays(); });
+
+  setInterval(() => {
+    const timeDisplay = document.getElementById('timeDisplay');
+    if (timeDisplay) timeDisplay.textContent = new Date().toTimeString().split(' ')[0];
+  }, 1000);
 });
 
-function setupSlider(sliderId, labelId, callback, decimals, suffix) {
-  decimals = decimals || 0;
-  suffix = suffix || '';
-  
-  const slider = document.getElementById(sliderId);
-  const label = document.getElementById(labelId);
-  
-  if (!slider || !label) {
-    console.error('スライダー要素が見つかりません:', sliderId, labelId);
-    return;
-  }
-  
-  slider.addEventListener('input', function() {
-    const val = parseFloat(slider.value);
-    callback(val);
-    label.textContent = val.toFixed(decimals) + suffix;
-  });
+function setupSlider(id, valId, cb, dec = 0) {
+  const s = document.getElementById(id), l = document.getElementById(valId);
+  if (s && l) s.addEventListener('input', () => { let v = parseFloat(s.value); cb(v); l.textContent = v.toFixed(dec); });
 }
 
-let currentFileName = '';
-
-function updateAudioStatus(active, filename) {
-  if (filename) {
-    currentFileName = filename;
-  }
-  
-  const statusEl = document.getElementById('audioStatus');
-  const infoEl = document.getElementById('audioInfo');
-  const statusTextEl = document.getElementById('status');
-  
-  if (!statusEl || !infoEl || !statusTextEl) {
-    console.error('ステータス表示要素が見つかりません');
-    return;
-  }
-  
-  if (active) {
-    statusEl.classList.add('active');
-    infoEl.textContent = currentFileName + ' (playing)';
-    statusTextEl.textContent = 'STATUS: PLAYING';
+function updateAudioStatus(playing, name) {
+  const info = document.getElementById('audioInfo');
+  const indicator = document.getElementById('audioStatus');
+  const statusTxt = document.getElementById('status');
+  if (name) info.textContent = name.toUpperCase();
+  if (playing) {
+    indicator.classList.add('active');
+    statusTxt.textContent = "STATUS: PLAYING";
   } else {
-    statusEl.classList.remove('active');
-    if (currentFileName) {
-      infoEl.textContent = currentFileName + ' (ready)';
-      statusTextEl.textContent = 'STATUS: READY';
-    } else {
-      infoEl.textContent = 'No audio loaded';
-      statusTextEl.textContent = 'STATUS: READY';
-    }
+    indicator.classList.remove('active');
+    statusTxt.textContent = "STATUS: READY";
   }
 }
 
-function updateTime() {
-  const timeDisplay = document.getElementById('timeDisplay');
-  if (timeDisplay) {
-    const now = new Date();
-    const time = now.toTimeString().split(' ')[0];
-    timeDisplay.textContent = time;
-  }
-}
-
-// システムオーディオ開始
+/**
+ * システムオーディオ（PC音）のキャプチャ開始
+ * 低レイテンシ化のため、AnalyserNodeの設定を最適化
+ */
 async function startSystemAudio() {
-  // 既存の音声を停止
-  if (soundFile && soundFile.isPlaying && soundFile.isPlaying()) {
-    soundFile.stop();
-  }
-  
-  // 画面共有APIでシステム音声を取得
-  const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: true,  // 画面共有には video が必要
-    audio: {
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false
+  try {
+    let ctx = getAudioContext();
+    if (ctx.state === 'suspended') await ctx.resume();
+
+    // 画面共有APIで音声付きストリームを取得
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { displaySurface: "monitor" },
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 1
+      }
+    });
+    
+    const audioTracks = stream.getAudioTracks();
+    if (audioTracks.length === 0) {
+      stream.getTracks().forEach(t => t.stop());
+      throw new Error("AUDIO NOT SHARED");
     }
-  });
-  
-  // 音声トラックがあるか確認
-  const audioTracks = stream.getAudioTracks();
-  if (audioTracks.length === 0) {
-    stream.getTracks().forEach(track => track.stop());
-    throw new Error('音声トラックがありません。音声の共有にチェックを入れてください。');
-  }
-  
-  // ビデオトラックは不要なので停止
-  stream.getVideoTracks().forEach(track => track.stop());
-  
-  systemAudioStream = stream;
-  
-  // Web Audio APIでアナライザーを設定
-  const audioContext = getAudioContext();
-  systemAudioSource = audioContext.createMediaStreamSource(stream);
-  
-  // アナライザーノードを作成
-  systemAudioAnalyser = audioContext.createAnalyser();
-  systemAudioAnalyser.fftSize = 16384;
-  systemAudioAnalyser.smoothingTimeConstant = 0.8;
-  
-  // 接続
-  systemAudioSource.connect(systemAudioAnalyser);
-  // 注意: スピーカーには接続しない（ハウリング防止）
-  
-  // データ配列を初期化
-  systemAudioData = new Uint8Array(systemAudioAnalyser.frequencyBinCount);
-  
-  isSystemAudioMode = true;
-  
-  // トラック終了時の処理
-  audioTracks[0].onended = function() {
-    console.log('システムオーディオが終了しました');
-    stopSystemAudio();
+    
+    // 不要なビデオトラックを停止して負荷軽減
+    stream.getVideoTracks().forEach(t => t.stop());
+    systemAudioStream = stream;
+    
+    // Web Audio APIのノード構築
+    systemAudioSource = ctx.createMediaStreamSource(stream);
+    systemAudioAnalyser = ctx.createAnalyser();
+    
+    // 遅延最小化のための設定
+    systemAudioAnalyser.fftSize = 8192; // 16384よりレイテンシが改善
+    systemAudioAnalyser.smoothingTimeConstant = 0; // ブラウザ側のスムージングを無効化して即時性を確保
+    
+    systemAudioSource.connect(systemAudioAnalyser);
+    
+    systemAudioData = new Uint8Array(systemAudioAnalyser.frequencyBinCount);
+    isSystemAudioMode = true;
+    
     const btn = document.getElementById('systemAudioBtn');
-    if (btn) {
-      btn.classList.remove('active');
-      btn.textContent = '🔊 SYSTEM AUDIO';
-    }
-    updateAudioStatus(false, 'System audio ended');
-  };
-  
-  console.log('システムオーディオ開始成功');
+    btn.classList.add('active');
+    btn.textContent = "⏹ STOP CAPTURE";
+    updateAudioStatus(true, "SYSTEM AUDIO");
+    updateBinMap();
+
+    audioTracks[0].onended = () => stopSystemAudio();
+
+  } catch (err) {
+    console.error("System Audio Start Error:", err);
+    alert("SYSTEM AUDIO ERROR: " + err.message);
+  }
 }
 
-// システムオーディオ停止
 function stopSystemAudio() {
   if (systemAudioStream) {
-    systemAudioStream.getTracks().forEach(track => track.stop());
+    systemAudioStream.getTracks().forEach(t => t.stop());
     systemAudioStream = null;
   }
-  
   if (systemAudioSource) {
     systemAudioSource.disconnect();
     systemAudioSource = null;
   }
-  
-  systemAudioAnalyser = null;
-  systemAudioData = null;
   isSystemAudioMode = false;
-  
-  console.log('システムオーディオ停止');
+  const btn = document.getElementById('systemAudioBtn');
+  btn.classList.remove('active');
+  btn.textContent = "🔊 SYSTEM AUDIO";
+  updateAudioStatus(false, "NO SOURCE");
+  updateBinMap();
 }
