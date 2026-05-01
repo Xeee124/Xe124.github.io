@@ -40,7 +40,6 @@
     }
     return { amps, phases };
   }
-
   function sampleLabelVector(label, harmonicsCount, bandwidth, referenceProfile, refMix, timeBias) {
     const samples = label && label.samples ? label.samples : [];
     const modelId = state.currentModel ? state.currentModel.id : null;
@@ -63,36 +62,30 @@
       base = randomVector(harmonicsCount);
     }
 
+    // ---- 倍音ごとのぼかし（ampStdを使って質感を保つ） ----
+    // リファレンスのtextureがあればampStdを使い、なければ均一なsigmaにフォールバック
     const texList = referenceProfile ? referenceList(referenceProfile).map(r => r.texture).filter(Boolean) : [];
     const hasTex = texList.length > 0;
     const uniformSigma = 0.10 + bandwidth * 0.45;
 
-    // テクスチャ・ジッターの多層化（LFOとノイズの分離）
-    const lfoAmp = Math.sin(timeBias * Math.PI * 4);   // 振幅用の遅い揺らぎ
-    const lfoPhase = Math.sin(timeBias * Math.PI * 7); // 位相用の速い揺らぎ
-
     const amps   = new Array(harmonicsCount);
     const phases = new Array(harmonicsCount);
-    
     for (let h = 0; h < harmonicsCount; h++) {
       const v = base.amps[h] || 0;
       let sigma;
       if (hasTex) {
+        // ampStdの平均を「ぼかしの自然な幅」として使い、bandwidthで倍率をかける
         let stdSum = 0;
         for (const tex of texList) stdSum += (tex.ampStd[h] || 0);
         const naturalStd = stdSum / texList.length;
+        // 固定成分が強い倍音（std小さい）はぼかしを弱く、変化する倍音はぼかしを強く
         sigma = naturalStd * (0.5 + bandwidth * 1.5);
       } else {
+        // フォールバック: 高次倍音ほど少し強くぼかす（元の挙動）
         sigma = uniformSigma * (0.35 + h / Math.max(1, harmonicsCount - 1));
       }
-
-      // 低次倍音はLFO中心（構造的な動き）、高次倍音はランダムノイズ中心（テクスチャ）に重み付け
-      const harmonicWeight = 1 - (h / harmonicsCount);
-      const ampJitter = (randn() * sigma * 0.5) + (lfoAmp * sigma * 0.5 * harmonicWeight);
-      const phaseJitter = (randn() * uniformSigma * 0.3) + (lfoPhase * uniformSigma * 0.7);
-
-      amps[h]   = clamp(v + ampJitter, 0, 1);
-      phases[h] = wrapPhase((base.phases[h] || 0) + phaseJitter);
+      amps[h]   = clamp(v + randn() * sigma, 0, 1);
+      phases[h] = wrapPhase((base.phases[h] || 0) + randn() * uniformSigma * 0.65);
     }
 
     let out = { amps, phases };
@@ -111,18 +104,13 @@
     if (!samples.length) return randomVector(harmonicsCount);
     const src = samples[Math.floor(rand() * samples.length)];
     let base = { amps: src.vector.amps.slice(0, harmonicsCount), phases: src.vector.phases.slice(0, harmonicsCount) };
-    
-    // 境界の揺らぎに対するLFO変調
-    const lfoBoundary = Math.cos(timeBias * Math.PI * 5);
-
     if (src.boundary && src.boundary.leftLabel && src.boundary.rightLabel) {
       const jitter = clamp(0.18 + bandwidth * 0.25, 0.05, 0.6);
       base = {
-        amps:   base.amps.map(v => clamp(v + (randn() * 0.5 + lfoBoundary * 0.5) * jitter * 0.15, 0, 1)),
-        phases: base.phases.map(v => wrapPhase(v + (randn() * 0.5 + lfoBoundary * 0.5) * jitter * 0.35)),
+        amps:   base.amps.map(v => clamp(v + randn() * jitter * 0.15, 0, 1)),
+        phases: base.phases.map(v => wrapPhase(v + randn() * jitter * 0.35)),
       };
     }
-    
     const refMix2 = refMix * 0.35;
     const modelId = state.currentModel ? state.currentModel.id : null;
     if (refMix2 > 0 && referenceFramePoolCached(referenceProfile, harmonicsCount, modelId).length) {
