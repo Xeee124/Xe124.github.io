@@ -1,0 +1,12 @@
+Delta comparator project files:
+- Delta.html
+- Delta.css
+- Delta_core.js
+- Delta_compare.js
+- Delta_volume.js
+- Delta_frequency.js
+- Delta_phase_frequency.js
+- Delta_phase_lr.js
+- Delta_time.js
+- Delta_perceptual.js
+- Delta_other.js
