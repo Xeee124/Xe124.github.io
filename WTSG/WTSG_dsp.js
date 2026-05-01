@@ -10,7 +10,6 @@
     fft(re, im);
     const amps = [];
     const phases = [];
-    // Strict Anti-Aliasing limit
     const maxBin = Math.min(harmonicsCount, Math.floor(N / 2) - 1);
     let maxMag = 1e-9;
     const mags = new Float64Array(maxBin);
@@ -20,13 +19,7 @@
       if (mag > maxMag) maxMag = mag;
     }
     for (let h = 0; h < maxBin; h++) {
-      // アンチエイリアシング: 高域(ナイキスト限界付近)の緩やかな減衰
-      let rollOff = 1.0;
-      const nyquistProximity = h / maxBin;
-      if (nyquistProximity > 0.85) {
-        rollOff = Math.cos((nyquistProximity - 0.85) / 0.15 * (Math.PI / 2));
-      }
-      amps.push(clamp((mags[h] / maxMag) * rollOff, 0, 1));
+      amps.push(clamp(mags[h] / maxMag, 0, 1));
       phases.push(wrapPhase(Math.atan2(im[h + 1], re[h + 1])));
     }
     while (amps.length < harmonicsCount) { amps.push(0); phases.push(0); }
@@ -69,11 +62,9 @@
     const totalSamples = Math.max(waveSize, Math.floor(durationSeconds * sampleRate));
     const aligned = Math.floor(totalSamples / waveSize) * waveSize;
     const segmentCount = Math.max(1, Math.floor(aligned / waveSize));
-    
-    // フェーズ・ロック処理：クロスフェード用に1セグメント多く生成する
     const segments = [];
-    for (let seg = 0; seg <= segmentCount; seg++) {
-      const t = segmentCount <= 1 ? 0.5 : seg / segmentCount;
+    for (let seg = 0; seg < segmentCount; seg++) {
+      const t = segmentCount <= 1 ? 0.5 : seg / (segmentCount - 1);
       const drift = 0.08 * Math.sin(t * Math.PI * 2 + timeBias * Math.PI * 2);
       const segVec = {
         amps: vector.amps.map((v, i) => clamp(v + drift * (0.25 - i / Math.max(1, harmonicsCount * 1.1)), 0, 1)),
@@ -81,18 +72,9 @@
       };
       segments.push(synthWaveFromVector(segVec, waveSize, harmonicsCount));
     }
-    
     const buffer = new Float32Array(aligned);
     for (let seg = 0; seg < segmentCount; seg++) {
-      const waveCurrent = segments[seg];
-      const waveNext = segments[seg + 1];
-      const startIdx = seg * waveSize;
-      
-      // サンプル単位でのリニアクロスフェード（波形の不連続性を排除）
-      for (let i = 0; i < waveSize; i++) {
-        const fade = i / waveSize; // 0.0 to 1.0
-        buffer[startIdx + i] = waveCurrent[i] * (1 - fade) + waveNext[i] * fade;
-      }
+      buffer.set(segments[seg], seg * waveSize);
     }
     return { buffer, url: bufferToWavUrl(buffer, sampleRate) };
   }
@@ -102,12 +84,7 @@
     const im = new Float64Array(waveSize);
     const maxBin = Math.min(harmonicsCount, Math.floor(waveSize / 2) - 1);
     for (let h = 1; h <= maxBin; h++) {
-      // アンチエイリアシング: 生成時にも高次倍音をロールオフ
-      let rollOff = 1.0;
-      if (h > maxBin * 0.85) {
-        rollOff = Math.cos((h - maxBin * 0.85) / (maxBin * 0.15) * (Math.PI / 2));
-      }
-      const a = (vector.amps[h - 1] || 0) * (waveSize / 2) * rollOff;
+      const a = (vector.amps[h - 1] || 0) * (waveSize / 2);
       const p = vector.phases[h - 1] || 0;
       re[h] = -a * Math.sin(p);
       im[h] = a * Math.cos(p);
@@ -127,3 +104,9 @@
     for (let i = 0; i < n; i++) { re[i] /= n; im[i] = -im[i] / n; }
   }
 
+  // ================================================================
+  // 質感ベース自己回帰生成
+  // 「振幅の形（質感）は固定、位相だけランダムウォーク」
+  // ================================================================
+
+  // リファレンス群から質感プロファイルをマージして返す
