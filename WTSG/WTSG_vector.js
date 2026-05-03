@@ -1,29 +1,38 @@
 // === WTSG_vector.js ===
+
+  // ----------------------------------------------------------------
+  // averageVectors — 位相はcircular mean（複素数平均）で正確に計算
+  // ----------------------------------------------------------------
   function averageVectors(vectors) {
-    if (!vectors.length) return null;
+    if (!vectors || !vectors.length) return null;
     const len = vectors[0].amps.length;
-    const amps = Array(len).fill(0);
-    const phases = Array(len).fill(0);
+    const amps   = new Float64Array(len);
+    const sinSum = new Float64Array(len); // 位相のsin成分の和
+    const cosSum = new Float64Array(len); // 位相のcos成分の和
     for (const v of vectors) {
       for (let i = 0; i < len; i++) {
-        amps[i] += v.amps[i] || 0;
-        phases[i] += v.phases[i] || 0;
+        amps[i]   += v.amps[i]   || 0;
+        sinSum[i] += Math.sin(v.phases[i] || 0);
+        cosSum[i] += Math.cos(v.phases[i] || 0);
       }
     }
+    const n = vectors.length;
+    const phArr = new Array(len);
+    const ampArr = new Array(len);
     for (let i = 0; i < len; i++) {
-      amps[i] /= vectors.length;
-      phases[i] /= vectors.length;
+      ampArr[i] = amps[i] / n;
+      phArr[i]  = wrapPhase(Math.atan2(sinSum[i], cosSum[i]));
     }
-    return normalizeVector({ amps, phases });
+    return normalizeVector({ amps: ampArr, phases: phArr });
   }
 
   function vectorDiff(a, b) {
     if (!a || !b) return null;
     const len = Math.min(a.amps.length, b.amps.length);
-    const amps = Array(len);
-    const phases = Array(len);
+    const amps   = new Array(len);
+    const phases = new Array(len);
     for (let i = 0; i < len; i++) {
-      amps[i] = (a.amps[i] || 0) - (b.amps[i] || 0);
+      amps[i]   = (a.amps[i]   || 0) - (b.amps[i]   || 0);
       phases[i] = wrapPhase((a.phases[i] || 0) - (b.phases[i] || 0));
     }
     return { amps, phases };
@@ -32,14 +41,33 @@
   function applyDiff(base, diff, amount) {
     if (!base || !diff) return base;
     const len = Math.min(base.amps.length, diff.amps.length);
-    const amps = Array(len);
-    const phases = Array(len);
+    const amps   = new Array(len);
+    const phases = new Array(len);
     for (let i = 0; i < len; i++) {
-      amps[i] = clamp((base.amps[i] || 0) + (diff.amps[i] || 0) * amount, 0, 1);
+      amps[i]   = clamp((base.amps[i]   || 0) + (diff.amps[i]   || 0) * amount, 0, 1);
       phases[i] = wrapPhase((base.phases[i] || 0) + (diff.phases[i] || 0) * amount);
     }
     return { amps, phases };
   }
+
+  // ----------------------------------------------------------------
+  // lerpPhase — 位相補間もcircular（最短経路で補間）
+  // ----------------------------------------------------------------
+  function lerpPhase(a, b, t) {
+    let d = wrapPhase(b - a);
+    return wrapPhase(a + d * t);
+  }
+
+  function lerpPhasesArray(a, b, t) {
+    const len = Math.min(a.length, b.length);
+    const out = new Array(len);
+    for (let i = 0; i < len; i++) out[i] = lerpPhase(a[i] || 0, b[i] || 0, t);
+    return out;
+  }
+
+  // ----------------------------------------------------------------
+  // sampleLabelVector — 振幅はampStdベース、位相はphaseVelStdベース
+  // ----------------------------------------------------------------
   function sampleLabelVector(label, harmonicsCount, bandwidth, referenceProfile, refMix, timeBias) {
     const samples = label && label.samples ? label.samples : [];
     const modelId = state.currentModel ? state.currentModel.id : null;
@@ -62,30 +90,36 @@
       base = randomVector(harmonicsCount);
     }
 
-    // ---- 倍音ごとのぼかし（ampStdを使って質感を保つ） ----
-    // リファレンスのtextureがあればampStdを使い、なければ均一なsigmaにフォールバック
-    const texList = referenceProfile ? referenceList(referenceProfile).map(r => r.texture).filter(Boolean) : [];
+    // textureリスト（複数リファレンスの統合）
+    const texList = referenceProfile
+      ? referenceList(referenceProfile).map(r => r.texture).filter(Boolean)
+      : [];
     const hasTex = texList.length > 0;
     const uniformSigma = 0.10 + bandwidth * 0.45;
 
     const amps   = new Array(harmonicsCount);
     const phases = new Array(harmonicsCount);
     for (let h = 0; h < harmonicsCount; h++) {
-      const v = base.amps[h] || 0;
-      let sigma;
+      const baseAmp = base.amps[h]   || 0;
+      const basePh  = base.phases[h] || 0;
+
       if (hasTex) {
-        // ampStdの平均を「ぼかしの自然な幅」として使い、bandwidthで倍率をかける
-        let stdSum = 0;
-        for (const tex of texList) stdSum += (tex.ampStd[h] || 0);
-        const naturalStd = stdSum / texList.length;
-        // 固定成分が強い倍音（std小さい）はぼかしを弱く、変化する倍音はぼかしを強く
-        sigma = naturalStd * (0.5 + bandwidth * 1.5);
+        // 振幅: textureのampStdを自然な幅として使用
+        let ampStdSum = 0, phVelStdSum = 0;
+        for (const tex of texList) {
+          ampStdSum   += tex.ampStd[h]      || 0;
+          phVelStdSum += tex.phaseVelStd[h] || 0;
+        }
+        const naturalAmpStd   = ampStdSum   / texList.length;
+        const naturalPhVelStd = phVelStdSum / texList.length;
+        amps[h]   = clamp(baseAmp + randn() * naturalAmpStd * (0.5 + bandwidth * 1.5), 0, 1);
+        // 位相: phaseVelStd（実際の変動幅）でぼかす
+        phases[h] = wrapPhase(basePh + randn() * naturalPhVelStd * (0.5 + bandwidth));
       } else {
-        // フォールバック: 高次倍音ほど少し強くぼかす（元の挙動）
-        sigma = uniformSigma * (0.35 + h / Math.max(1, harmonicsCount - 1));
+        const sigma = uniformSigma * (0.35 + h / Math.max(1, harmonicsCount - 1));
+        amps[h]   = clamp(baseAmp + randn() * sigma, 0, 1);
+        phases[h] = wrapPhase(basePh + randn() * uniformSigma * 0.65);
       }
-      amps[h]   = clamp(v + randn() * sigma, 0, 1);
-      phases[h] = wrapPhase((base.phases[h] || 0) + randn() * uniformSigma * 0.65);
     }
 
     let out = { amps, phases };
@@ -93,7 +127,7 @@
       const refVec = pickReferenceFrame(referenceProfile, timeBias, harmonicsCount);
       out = {
         amps:   lerpArray(out.amps, refVec.amps, refMix),
-        phases: lerpArray(out.phases, refVec.phases, refMix).map(wrapPhase),
+        phases: lerpPhasesArray(out.phases, refVec.phases, refMix),
       };
     }
     return normalizeVector(out);
@@ -117,7 +151,7 @@
       const refVec = pickReferenceFrame(referenceProfile, timeBias, harmonicsCount);
       base = {
         amps:   lerpArray(base.amps, refVec.amps, refMix2),
-        phases: lerpArray(base.phases, refVec.phases, refMix2).map(wrapPhase),
+        phases: lerpPhasesArray(base.phases, refVec.phases, refMix2),
       };
     }
     return normalizeVector(base);
@@ -130,18 +164,17 @@
     const idx = clamp(Math.floor(timeBias * pool.length), 0, pool.length - 1);
     const frame = pool[idx];
     return {
-      amps:   (frame.amps || []).slice(0, harmonicsCount),
+      amps:   (frame.amps   || []).slice(0, harmonicsCount),
       phases: (frame.phases || []).slice(0, harmonicsCount),
     };
   }
 
   function randomVector(harmonicsCount) {
-    const amps = [];
-    const phases = [];
+    const amps   = new Array(harmonicsCount);
+    const phases = new Array(harmonicsCount);
     for (let i = 0; i < harmonicsCount; i++) {
-      amps.push(Math.pow(rand(), 1.6) * (1 - i / (harmonicsCount * 1.15)));
-      phases.push((rand() * 2 - 1) * Math.PI);
+      amps[i]   = Math.pow(rand(), 1.6) * (1 - i / (harmonicsCount * 1.15));
+      phases[i] = wrapPhase((rand() * 2 - 1) * Math.PI);
     }
     return normalizeVector({ amps, phases });
   }
-
