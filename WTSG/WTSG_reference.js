@@ -118,19 +118,27 @@
       ampStd[h]  = Math.sqrt(Math.max(0, ampSum2[h] / nF - ampMean[h] * ampMean[h]));
     }
 
-    // 位相速度：フレーム間diff（インライン、配列確保なし）
+    // 位相速度：circular meanで方向を、絶対値の標準偏差でばらつきを求める
     if (frames.length >= 2) {
       const nDiff = frames.length - 1;
       const TWO_PI = 2 * Math.PI;
       for (let h = 0; h < H; h++) {
-        let sumD = 0, sumD2 = 0;
+        let sinSum = 0, cosSum = 0;
+        const absDiffs = new Float64Array(nDiff);
         for (let fi = 1; fi < frames.length; fi++) {
           let d = (frames[fi].phases[h] || 0) - (frames[fi-1].phases[h] || 0);
-          d -= TWO_PI * Math.round(d / TWO_PI);
-          sumD += d; sumD2 += d * d;
+          d -= TWO_PI * Math.round(d / TWO_PI);  // wrap to -π〜π
+          sinSum += Math.sin(d);
+          cosSum += Math.cos(d);
+          absDiffs[fi - 1] = Math.abs(d);
         }
-        phaseVel[h]    = sumD / nDiff;
-        phaseVelStd[h] = Math.sqrt(Math.max(0, sumD2 / nDiff - phaseVel[h] * phaseVel[h]));
+        // 方向: circular mean
+        phaseVel[h] = Math.atan2(sinSum / nDiff, cosSum / nDiff);
+        // ばらつき: 絶対値の標準偏差
+        let absSum = 0, absSum2 = 0;
+        for (let k = 0; k < nDiff; k++) { absSum += absDiffs[k]; absSum2 += absDiffs[k] ** 2; }
+        const absMean = absSum / nDiff;
+        phaseVelStd[h] = Math.sqrt(Math.max(0, absSum2 / nDiff - absMean ** 2));
       }
     }
 
@@ -164,4 +172,3 @@
       createdAt: nowIso(),
     };
   }
-
