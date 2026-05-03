@@ -14,6 +14,7 @@
     const activeLabelName = els.trainLabelSelect.value && els.trainLabelSelect.value !== '__new__' ? els.trainLabelSelect.value : '';
     const activeLabel = activeLabelName ? ensureLabel(m, activeLabelName) : null;
     const samples = activeLabel && activeLabel.samples ? activeLabel.samples : [];
+    const tex = ref ? mergeTextureProfiles(ref, harmonicsCount) : null;
     const generated = [];
     for (let i = 0; i < count; i++) {
       const t = count <= 1 ? 0.5 : i / (count - 1);
@@ -24,7 +25,7 @@
         id: uuid(),
         bandwidth: bw,
         vector: vec,
-        wav: synthVectorToBuffer(vec, m.settings.waveSize, m.settings.durationSeconds, SAMPLE_RATE, harmonicsCount, t),
+        wav: synthVectorToBuffer(vec, m.settings.waveSize, m.settings.durationSeconds, SAMPLE_RATE, harmonicsCount, tex),
         sourceLabel: activeLabelName || 'random',
       });
     }
@@ -436,4 +437,3 @@
       if (candCurrentIdx < state.candidateBatch.length - 1) { candCurrentIdx++; updateCandNav(); }
     });
   }
-
