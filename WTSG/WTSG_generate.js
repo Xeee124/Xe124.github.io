@@ -179,15 +179,15 @@
         const vecA = sampleLabelVector(labelA, harmonicsCount, bw, ref, refMix, t);
         const vecB = labelB ? sampleLabelVector(labelB, harmonicsCount, bw, ref, refMix, t) : vecA;
         let blended = {
-          amps:   lerpArray(vecA.amps,   vecB.amps,   mix),
-          phases: lerpArray(vecA.phases, vecB.phases, mix).map(wrapPhase),
+          amps:   lerpArray(vecA.amps, vecB.amps, mix),
+          phases: lerpPhasesArray(vecA.phases, vecB.phases, mix),
         };
         if (useBoundary && m.boundary && m.boundary.samples && m.boundary.samples.length && Math.abs(mix - 0.5) <= boundaryThreshold) {
           const boundaryVec = sampleBoundaryVector(m.boundary, harmonicsCount, bw, ref, refMix, t);
           const boundaryAmount = 1 - Math.min(1, Math.abs(mix - 0.5) / Math.max(boundaryThreshold, 0.0001));
           blended = {
-            amps:   lerpArray(blended.amps,   boundaryVec.amps,   boundaryAmount * 0.65),
-            phases: lerpArray(blended.phases, boundaryVec.phases, boundaryAmount * 0.65).map(wrapPhase),
+            amps:   lerpArray(blended.amps, boundaryVec.amps, boundaryAmount * 0.65),
+            phases: lerpPhasesArray(blended.phases, boundaryVec.phases, boundaryAmount * 0.65),
           };
         }
         const frame = synthWaveFromVector(blended, waveSize, harmonicsCount);
@@ -313,4 +313,3 @@
   }
 
   // keep model updated on every save-related action
-
