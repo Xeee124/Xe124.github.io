@@ -117,7 +117,33 @@
     .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
     @media (max-width: 980px) {
       .topbar, .toolbar-grid, .two-col, .three-col, .mini-grid { grid-template-columns: 1fr; }
-      .row { grid-template-columns: 1fr; }
-      .c-1,.c-2,.c-3,.c-4,.c-5,.c-6,.c-7,.c-8,.c-9,.c-10,.c-11,.c-12 { grid-column: span 1; }
-      .app { padding: 10px; }
+      .row { grid-template-columns: repeat(12, 1fr); }
+      .app { padding: 8px; }
+      /* topbarをコンパクトに */
+      .hero h1 { font-size: 1.1rem; }
+      .hero p { display: none; }
+      .hero { padding: 10px 12px; }
+      .toolbar { padding: 8px; }
+      .toolbar-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+      .toolbar-grid > *:nth-child(3) { grid-column: span 2; }
+      /* パネル間のギャップを詰める */
+      .grid { gap: 8px; }
+      .panel { padding: 10px; }
+      /* 候補カードのアクションボタンを横並びで小さく */
+      .card-actions { gap: 6px; }
+      .card-actions button { flex: 1; font-size: 0.85rem; min-height: 40px; }
+      /* ぼかし範囲の上下限は横並びに */
+      .row .c-6 { grid-column: span 6; }
+      /* タブバーをスマホ幅に合わせる */
+      .tabbar { gap: 6px; }
+      .tabbar button { flex: 1; min-height: 42px; font-size: 0.9rem; padding: 0.5rem; }
+      /* アナライザーの高さ */
+      .cand-analyzer canvas { height: 140px !important; }
+    }
+    @media (max-width: 480px) {
+      .row .c-4 { grid-column: span 12; }
+      .row .c-6 { grid-column: span 12; }
+      /* 倍音数・波形長・秒数を1行に3つ並べる代わりに縦に */
+      .c-4 { grid-column: span 12; }
+      .c-6 { grid-column: span 12; }
     }
