@@ -65,16 +65,25 @@
     };
   }
 
+  // estimateEnvelope: RMSと倍音重心を保存（実際に使える統計）
   function estimateEnvelope(vector) {
-    const steps = 8;
-    const env = [];
-    let base = 0;
-    for (let i = 0; i < vector.amps.length; i++) base += vector.amps[i] || 0;
-    base /= Math.max(1, vector.amps.length);
-    for (let i = 0; i < steps; i++) {
-      const t = i / Math.max(1, steps - 1);
-      env.push(clamp(base * (0.85 + 0.3 * Math.sin(t * Math.PI)), 0, 1));
+    const amps = vector.amps;
+    const H = amps.length;
+    // RMS振幅
+    let rmsSum = 0;
+    for (let i = 0; i < H; i++) rmsSum += (amps[i] || 0) ** 2;
+    const rms = Math.sqrt(rmsSum / H);
+    // スペクトル重心（低次〜高次の偏り）
+    let wSum = 0, wTotal = 0;
+    for (let i = 0; i < H; i++) { wSum += i * (amps[i] || 0); wTotal += (amps[i] || 0); }
+    const centroid = wTotal > 1e-9 ? wSum / wTotal / H : 0.5;
+    // 80%エネルギーに必要な倍音本数（スペクトル密度）
+    const totalE = rmsSum;
+    const sorted = Array.from(amps).sort((a, b) => b - a);
+    let cumE = 0; let density = H;
+    for (let i = 0; i < sorted.length; i++) {
+      cumE += (sorted[i] || 0) ** 2;
+      if (cumE >= totalE * 0.8) { density = i + 1; break; }
     }
-    return env;
+    return { rms, centroid, density };
   }
-
