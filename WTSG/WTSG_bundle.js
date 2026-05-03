@@ -1212,14 +1212,41 @@
   // 各候補のビューモード記憶
   const candViewMap = {};
 
+  // 描画用に上位N本の倍音インデックスを取得（振幅の大きい順）
+  function topHarmonicIndices(amps, maxH) {
+    const H = Math.min(amps.length, maxH);
+    const idx = [];
+    for (let i = 0; i < H; i++) idx.push(i);
+    idx.sort((a, b) => (amps[b] || 0) - (amps[a] || 0));
+    return idx.slice(0, 64); // 上位64本
+  }
+
+  // 1波形を加算合成（描画専用、軽量版）
+  function makeDisplayWave(amps, phases, topIdx, WAVE_PTS, phaseShift) {
+    const wave = new Float32Array(WAVE_PTS);
+    for (const h of topIdx) {
+      const a = amps[h] || 0;
+      if (a < 5e-4) continue;
+      const ph = (phases[h] || 0) + phaseShift;
+      const freq = h + 1;
+      for (let i = 0; i < WAVE_PTS; i++) {
+        wave[i] += a * Math.sin(2 * Math.PI * freq * i / WAVE_PTS + ph);
+      }
+    }
+    let mx = 0;
+    for (let i = 0; i < WAVE_PTS; i++) { const v = Math.abs(wave[i]); if (v > mx) mx = v; }
+    if (mx > 1e-6) { const inv = 1 / mx; for (let i = 0; i < WAVE_PTS; i++) wave[i] *= inv; }
+    return wave;
+  }
+
   function drawAnalyzer(canvas, vec, viewMode) {
     const ctx = canvas.getContext('2d');
-    const W = canvas.width || canvas.offsetWidth || 320;
-    const H = canvas.height || 110;
+    const W = canvas.offsetWidth || canvas.width || 320;
+    const H = canvas.height || 160;
     canvas.width = W;
     canvas.height = H;
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#060d1a';
+    ctx.fillStyle = '#050b14';
     ctx.fillRect(0, 0, W, H);
 
     const amps = vec.amps;
@@ -1227,92 +1254,77 @@
     const n = amps.length;
 
     if (viewMode === '3D') {
-      // ---- Vital スタイル 3D ----
-      // 波形をIFFT相当で時間軸に展開し、複数フレームを奥から手前に並べる
-      const NUM_FRAMES = 12;   // 奥から手前へ並べるフレーム数
-      const WAVE_PTS  = 256;   // 1フレームの描画点数
+      // ---- Vital スタイル 3D サーフェス ----
+      // 斜視投影：X=時間軸、Y=振幅、Z=フレーム番号（手前→奥）
+      // 隣接フレームの頂点を結んで「面」として描画
+      const NUM_FRAMES = 20;    // フレーム数（奥行き）
+      const WAVE_PTS   = 128;   // 1フレームの横解像度（軽量化）
 
-      // 投影パラメータ
-      const ox = W * 0.06;          // 左端オフセット
-      const fw = W * 0.88;          // フレームの横幅
-      const midY = H * 0.52;        // 水平中央
-      const amp_scale = H * 0.38;   // 縦スケール
-      const depth_dx = W * 0.008;   // フレームごとの右シフト量
-      const depth_dy = H * 0.028;   // フレームごとの上シフト量（奥ほど上）
+      // 斜視パラメータ（Vital風: 画面下を手前、上を奥）
+      const skewX  = W * 0.18;  // Z方向の横ずれ量（全体）
+      const skewY  = H * 0.38;  // Z方向の縦ずれ量（全体）
+      const waveH  = H * 0.30;  // 振幅の縦スケール
+      const baseY  = H * 0.72;  // 最前面の基準Y
 
-      // 波形を時間軸に展開（加算合成）
-      function makeWave(ampArr, phArr, frameIdx, numFrames) {
-        // 位相に微小なオフセットを入れて各フレームに変化を出す
-        const phaseOffset = (frameIdx / numFrames) * Math.PI * 0.18;
-        const wave = new Float32Array(WAVE_PTS);
-        const harmonics = Math.min(ampArr.length, 128); // 128本までで十分
-        for (let h = 0; h < harmonics; h++) {
-          const a = ampArr[h] || 0;
-          if (a < 1e-5) continue;
-          const ph = (phArr[h] || 0) + phaseOffset * (h + 1) * 0.3;
-          for (let i = 0; i < WAVE_PTS; i++) {
-            wave[i] += a * Math.sin(2 * Math.PI * (h + 1) * i / WAVE_PTS + ph);
-          }
-        }
-        // 正規化
-        let mx = 0;
-        for (let i = 0; i < WAVE_PTS; i++) { const v = Math.abs(wave[i]); if (v > mx) mx = v; }
-        if (mx > 1e-6) for (let i = 0; i < WAVE_PTS; i++) wave[i] /= mx;
-        return wave;
+      // 投影関数：time(0-1), amp(-1〜1), frame(0=手前, 1=奥) → canvas座標
+      function project(time, amp, frame) {
+        const px = time * W * 0.88 + W * 0.06 + skewX * frame;
+        const py = baseY - skewY * frame - amp * waveH;
+        return [px, py];
       }
 
-      // 奥から順に描画（painter's algorithm）
+      // 上位倍音だけ使う（毎回計算しない）
+      const topIdx = topHarmonicIndices(amps, n);
+
+      // 全フレームの波形を事前計算
+      const waves = [];
+      for (let fi = 0; fi < NUM_FRAMES; fi++) {
+        const shift = (fi / NUM_FRAMES) * Math.PI * 0.5; // フレームごとに位相をわずかにずらす
+        waves.push(makeDisplayWave(amps, phases, topIdx, WAVE_PTS, shift));
+      }
+
+      // 奥から手前へ描画（painter's algorithm）
       for (let fi = NUM_FRAMES - 1; fi >= 0; fi--) {
-        const t = fi / (NUM_FRAMES - 1);  // 0=最奥, 1=最前面
-        const frameX = ox + (NUM_FRAMES - 1 - fi) * depth_dx;
-        const frameY = midY - (NUM_FRAMES - 1 - fi) * depth_dy;
-        const wave = makeWave(amps, phases, fi, NUM_FRAMES);
+        const t = 1 - fi / (NUM_FRAMES - 1); // 0=奥, 1=手前
+        const wave = waves[fi];
+        const alpha = 0.25 + 0.75 * t;
+        const lw    = 0.5  + 0.8  * t;
 
-        // 奥は小さく・薄く
-        const alpha  = 0.12 + 0.78 * t;
-        const lwidth = 0.6  + 1.2  * t;
-        const scaleX = 1 - (1 - t) * 0.14; // 奥ほど少し横を縮める
-
-        // 塗りつぶし（最前面のみ）
-        if (fi === 0) {
+        // フレーム間の面を塗る（このフレームと1つ手前のフレームを結ぶ）
+        if (fi < NUM_FRAMES - 1) {
+          const waveNext = waves[fi + 1];
           ctx.beginPath();
-          for (let i = 0; i <= WAVE_PTS; i++) {
-            const px = frameX + (i / WAVE_PTS) * fw * scaleX;
-            const py = i < WAVE_PTS ? frameY - wave[i] * amp_scale : frameY;
-            i === 0 ? ctx.moveTo(px, frameY) : (i === 1 ? ctx.lineTo(px, py) : ctx.lineTo(px, py));
+          const [sx, sy] = project(0, wave[0], fi / (NUM_FRAMES - 1));
+          ctx.moveTo(sx, sy);
+          for (let i = 1; i < WAVE_PTS; i++) {
+            const [px, py] = project(i / (WAVE_PTS - 1), wave[i], fi / (NUM_FRAMES - 1));
+            ctx.lineTo(px, py);
           }
-          ctx.lineTo(frameX + fw * scaleX, frameY);
+          for (let i = WAVE_PTS - 1; i >= 0; i--) {
+            const [px, py] = project(i / (WAVE_PTS - 1), waveNext[i], (fi + 1) / (NUM_FRAMES - 1));
+            ctx.lineTo(px, py);
+          }
           ctx.closePath();
-          ctx.fillStyle = 'rgba(255,100,30,0.07)';
+          // 手前ほど明るい紫〜青
+          const faceAlpha = 0.04 + 0.06 * t;
+          ctx.fillStyle = `rgba(140,120,200,${faceAlpha})`;
           ctx.fill();
         }
 
-        // ライン
+        // 波形ライン
         ctx.beginPath();
-        const hue = 25 + (1 - t) * 160; // 前面=オレンジ、後面=青
-        ctx.strokeStyle = `hsla(${hue},${70+t*30}%,${55+t*25}%,${alpha})`;
-        ctx.lineWidth = lwidth;
+        ctx.lineWidth = lw;
+        // 手前=明るい白紫、奥=暗い青紫（Vital風）
+        const light = Math.floor(140 + 115 * t);
+        ctx.strokeStyle = `rgba(${light},${Math.floor(110+100*t)},${light+30},${alpha})`;
         for (let i = 0; i < WAVE_PTS; i++) {
-          const px = frameX + (i / (WAVE_PTS - 1)) * fw * scaleX;
-          const py = frameY - wave[i] * amp_scale;
+          const [px, py] = project(i / (WAVE_PTS - 1), wave[i], fi / (NUM_FRAMES - 1));
           i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
         }
         ctx.stroke();
-
-        // 底辺ライン（立体感）
-        ctx.beginPath();
-        ctx.strokeStyle = `rgba(40,80,140,${alpha * 0.3})`;
-        ctx.lineWidth = 0.5;
-        ctx.moveTo(frameX, frameY);
-        ctx.lineTo(frameX + fw * scaleX, frameY);
-        ctx.stroke();
       }
 
-      // ラベル
-      ctx.fillStyle = 'rgba(120,170,220,0.5)';
-      ctx.font = '8px system-ui';
-      ctx.fillText('3D', 4, H - 4);
-
+    } else if (viewMode === 'Bar') {
     } else if (viewMode === 'Bar') {
       // ---- 棒グラフ（振幅上段 + 位相0〜360°下段）----
       const ampH = H * 0.50, phH = H * 0.36;
@@ -1403,7 +1415,7 @@
       wrap.style.display = 'none';
       canvas.style.display = 'block';
       canvas.width = canvas.offsetWidth || 320;
-      canvas.height = 110;
+      canvas.height = 160;
       drawAnalyzer(canvas, vec, viewMode);
     }
 
@@ -1451,9 +1463,9 @@
         <div class="cand-slide">
           <div class="card" data-cand-id="${escapeAttr(cand.id)}">
             <div class="cand-analyzer">
-              <canvas style="display:block;width:100%;height:110px;"></canvas>
-              <div class="det-wrap" style="display:none;height:110px;overflow-x:auto;-webkit-overflow-scrolling:touch;">
-                <canvas height="110" style="height:110px;display:block;"></canvas>
+              <canvas style="display:block;width:100%;height:160px;"></canvas>
+              <div class="det-wrap" style="display:none;height:160px;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+                <canvas height="160" style="height:160px;display:block;"></canvas>
               </div>
               <div class="view-btns">
                 ${ANALYZER_VIEWS.map(v => `<button class="view-btn${v === (candViewMap[cand.id]||'3D') ? ' active':''}" data-view="${v}" data-cand-ref="${escapeAttr(cand.id)}">${v}</button>`).join('')}
