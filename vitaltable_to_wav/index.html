@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vitaltable → WAV</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fflate/0.8.2/fflate.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Syne+Mono&family=Syne:wght@400;700;800&display=swap');
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --border: #1e1e2e;
+      --accent: #b8ff3c;
+      --accent2: #3cffb8;
+      --muted: #444460;
+      --text: #d0d0e8;
+      --white: #f0f0ff;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 40% at 20% 80%, rgba(184, 255, 60, 0.04) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 50% at 80% 20%, rgba(60, 255, 184, 0.04) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 680px;
+      position: relative;
+    }
+
+    header {
+      margin-bottom: 2.5rem;
+    }
+
+    .title {
+      font-size: clamp(1.8rem, 5vw, 2.8rem);
+      font-weight: 800;
+      color: var(--white);
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+
+    .title span {
+      color: var(--accent);
+    }
+
+    .subtitle {
+      font-family: 'Syne Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-top: 0.6rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    #drop-zone {
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 3rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+      background: var(--surface);
+      user-select: none;
+    }
+
+    #drop-zone.over {
+      border-color: var(--accent);
+      background: rgba(184, 255, 60, 0.03);
+    }
+
+    #drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .drop-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 1rem;
+      opacity: 0.4;
+    }
+
+    .drop-label {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--white);
+      margin-bottom: 0.4rem;
+    }
+
+    .drop-hint {
+      font-family: 'Syne Mono', monospace;
+      font-size: 0.68rem;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+    }
+
+    #file-list {
+      margin-top: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .file-item {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 0.9rem 1.1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+      animation: slideIn 0.18s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .file-icon {
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
+      opacity: 0.5;
+    }
+
+    .file-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .file-name {
+      font-weight: 700;
+      font-size: 0.85rem;
+      color: var(--white);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-meta {
+      font-family: 'Syne Mono', monospace;
+      font-size: 0.62rem;
+      color: var(--muted);
+      margin-top: 0.15rem;
+      letter-spacing: 0.05em;
+    }
+
+    .file-status {
+      font-family: 'Syne Mono', monospace;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      flex-shrink: 0;
+    }
+
+    .file-status.ready {
+      color: var(--accent2);
+    }
+
+    .file-status.done {
+      color: var(--accent);
+    }
+
+    .file-status.error {
+      color: #ff5566;
+    }
+
+    .file-status.loading {
+      color: var(--muted);
+    }
+
+    .file-dl {
+      display: none;
+      align-items: center;
+      gap: 0.4rem;
+      text-decoration: none;
+      background: var(--accent);
+      color: #0a0a0f;
+      font-family: 'Syne Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 1rem;
+      border-radius: 5px;
+      white-space: nowrap;
+      transition: opacity 0.15s;
+    }
+
+    .file-dl:hover {
+      opacity: 0.85;
+    }
+
+    .file-dl.visible {
+      display: flex;
+    }
+
+    #zip-bar {
+      display: none;
+      justify-content: flex-end;
+      margin-top: 0.5rem;
+    }
+
+    #zip-bar.visible {
+      display: flex;
+    }
+
+    #dl-zip {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      text-decoration: none;
+      background: var(--accent);
+      color: #0a0a0f;
+      font-family: 'Syne Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 1rem;
+      border-radius: 5px;
+      white-space: nowrap;
+      transition: opacity 0.15s;
+      cursor: pointer;
+      border: none;
+    }
+
+    #dl-zip:hover {
+      opacity: 0.85;
+    }
+
+    .actions {
+      margin-top: 1.5rem;
+      display: flex;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+    }
+
+    button {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.9rem;
+      letter-spacing: 0.04em;
+      border: none;
+      border-radius: 6px;
+      padding: 0.8rem 1.6rem;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+
+    button:active {
+      transform: scale(0.97);
+    }
+
+    #btn-convert {
+      background: var(--accent);
+      color: #0a0a0f;
+    }
+
+    #btn-clear {
+      background: var(--border);
+      color: var(--muted);
+    }
+
+    button:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    .progress-wrap {
+      margin-top: 1.2rem;
+      display: none;
+    }
+
+    .progress-wrap.visible {
+      display: block;
+    }
+
+    .progress-bar-bg {
+      background: var(--border);
+      border-radius: 99px;
+      height: 4px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 99px;
+      transition: width 0.2s;
+      width: 0%;
+    }
+
+    .progress-label {
+      font-family: 'Syne Mono', monospace;
+      font-size: 0.62rem;
+      color: var(--muted);
+      margin-top: 0.4rem;
+      letter-spacing: 0.05em;
+    }
+
+    #error-log {
+      margin-top: 1rem;
+      font-family: 'Syne Mono', monospace;
+      font-size: 0.68rem;
+      color: #ff5566;
+      display: none;
+      white-space: pre-line;
+    }
+
+    #error-log.visible {
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <div class="title">vitaltable <span>→</span> wav</div>
+      <div class="subtitle">stereo · 16-bit signed PCM · no resampling · no conversion</div>
+    </header>
+
+    <div id="drop-zone">
+      <input type="file" id="file-input" multiple accept=".vitaltable">
+      <svg class="drop-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4" y="8" width="40" height="32" rx="4" stroke="currentColor" stroke-width="2" />
+        <path d="M24 20v12M24 32l-5-5M24 32l5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round" />
+        <path d="M14 20h-2a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round" opacity="0.4" />
+        <path d="M34 20h2a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round" opacity="0.4" />
+      </svg>
+      <div class="drop-label">.vitaltable をドロップ、またはクリックして選択</div>
+      <div class="drop-hint">複数ファイル対応</div>
+    </div>
+
+    <div id="file-list"></div>
+
+    <div id="zip-bar">
+      <button id="dl-zip" type="button">↓ ZIP</button>
+    </div>
+
+    <div class="actions">
+      <button id="btn-convert" type="button" disabled>WAVに変換</button>
+      <button id="btn-clear" type="button" disabled>クリア</button>
+    </div>
+
+    <div class="progress-wrap" id="progress-wrap">
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progress-fill"></div>
+      </div>
+      <div class="progress-label" id="progress-label">0 / 0 変換中...</div>
+    </div>
+
+    <div id="error-log"></div>
+  </div>
+
+  <script>
+    // ─── State ───────────────────────────────────────────────────────────────────
+    const files = []; // { file, name, status, element, statusEl, dlAnchor, wavBuffer, objectURL }
+
+    // ─── DOM refs ────────────────────────────────────────────────────────────────
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const fileList = document.getElementById('file-list');
+    const btnConvert = document.getElementById('btn-convert');
+    const dlZip = document.getElementById('dl-zip');
+    const zipBar = document.getElementById('zip-bar');
+    const btnClear = document.getElementById('btn-clear');
+    const progressWrap = document.getElementById('progress-wrap');
+    const progressFill = document.getElementById('progress-fill');
+    const progressLabel = document.getElementById('progress-label');
+    const errorLog = document.getElementById('error-log');
+
+    // ─── Drop zone events ─────────────────────────────────────────────────────────
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.classList.add('over');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('over');
+    });
+
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('over');
+      addFiles([...e.dataTransfer.files]);
+    });
+
+    fileInput.addEventListener('change', () => {
+      addFiles([...fileInput.files]);
+      fileInput.value = '';
+    });
+
+    // ─── Add files ────────────────────────────────────────────────────────────────
+    function addFiles(newFiles) {
+      const valid = newFiles.filter(f => /\.vitaltable$/i.test(f.name));
+      if (valid.length === 0) return;
+
+      valid.forEach(file => {
+        // avoid duplicates by name
+        if (files.some(e => e.file.name.toLowerCase() === file.name.toLowerCase())) return;
+
+        const entry = {
+          file,
+          name: file.name,
+          status: 'ready',
+          element: null,
+          statusEl: null,
+          dlAnchor: null,
+          wavBuffer: null,
+          objectURL: null
+        };
+
+        files.push(entry);
+
+        const item = document.createElement('div');
+        item.className = 'file-item';
+
+        const baseName = file.name.replace(/\.vitaltable$/i, '');
+
+        item.innerHTML = `
+      <svg class="file-icon" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M6 4h10l6 6v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M16 4v6h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M10 17c0-1.1.9-2 2-2h4a2 2 0 0 1 0 4h-4a2 2 0 0 0 0 4h4c1.1 0 2-.9 2-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.7"/>
+      </svg>
+      <div class="file-info">
+        <div class="file-name">${baseName}</div>
+        <div class="file-meta">${(file.size / 1024).toFixed(1)} KB</div>
+      </div>
+      <span class="file-status ready">READY</span>
+      <a class="file-dl" download="${baseName}.wav">↓ WAV</a>
+    `;
+
+        entry.element = item;
+        entry.statusEl = item.querySelector('.file-status');
+        entry.dlAnchor = item.querySelector('.file-dl');
+        fileList.appendChild(item);
+      });
+
+      updateButtons();
+    }
+
+    // ─── Buttons ─────────────────────────────────────────────────────────────────
+    function updateButtons() {
+      const hasFiles = files.length > 0;
+      const hasReady = files.some(e => e.status === 'ready');
+      const doneFiles = files.filter(e => e.status === 'done' && e.wavBuffer);
+
+      btnConvert.disabled = !hasReady;
+      btnClear.disabled = !hasFiles;
+
+      // ZIP bar: show when at least 1 file is done
+      if (doneFiles.length >= 1) {
+        zipBar.classList.add('visible');
+        dlZip.disabled = false;
+      } else {
+        zipBar.classList.remove('visible');
+        dlZip.disabled = true;
+      }
+    }
+
+    btnClear.addEventListener('click', () => {
+      // revoke old object URLs
+      files.forEach(e => {
+        if (e.objectURL) URL.revokeObjectURL(e.objectURL);
+      });
+
+      files.length = 0;
+      fileList.innerHTML = '';
+      zipBar.classList.remove('visible');
+      progressWrap.classList.remove('visible');
+      errorLog.classList.remove('visible');
+      errorLog.textContent = '';
+      updateButtons();
+    });
+
+    btnConvert.addEventListener('click', convertAll);
+    dlZip.addEventListener('click', downloadZip);
+
+    // ─── Conversion ──────────────────────────────────────────────────────────────
+    async function convertAll() {
+      btnConvert.disabled = true;
+      btnClear.disabled = true;
+      errorLog.classList.remove('visible');
+      errorLog.textContent = '';
+
+      const toConvert = files.filter(e => e.status === 'ready');
+      progressWrap.classList.add('visible');
+      progressFill.style.width = '0%';
+      progressLabel.textContent = `0 / ${toConvert.length} 変換中...`;
+
+      let done = 0;
+
+      for (const entry of toConvert) {
+        entry.statusEl.className = 'file-status loading';
+        entry.statusEl.textContent = '...';
+
+        try {
+          const wavBuffer = await convertFile(entry.file);
+          entry.wavBuffer = wavBuffer; // keep ArrayBuffer for ZIP
+
+          if (entry.objectURL) URL.revokeObjectURL(entry.objectURL);
+          entry.objectURL = URL.createObjectURL(new Blob([wavBuffer], { type: 'audio/wav' }));
+          entry.dlAnchor.href = entry.objectURL;
+          entry.dlAnchor.classList.add('visible');
+
+          entry.statusEl.className = 'file-status done';
+          entry.statusEl.textContent = 'DONE';
+          entry.status = 'done';
+        } catch (err) {
+          entry.statusEl.className = 'file-status error';
+          entry.statusEl.textContent = 'ERR';
+          entry.status = 'error';
+          logError(entry.file.name, err?.message || String(err));
+        }
+
+        done++;
+        progressFill.style.width = `${(done / toConvert.length) * 100}%`;
+        progressLabel.textContent = `${done} / ${toConvert.length} 完了`;
+      }
+
+      btnClear.disabled = false;
+      updateButtons();
+    }
+
+    // ─── Core converter ──────────────────────────────────────────────────────────
+    async function convertFile(file) {
+      const text = await file.text();
+      const json = JSON.parse(text);
+
+      // Navigate to first audio component
+      const groups = json.groups;
+      if (!groups || groups.length === 0) throw new Error('groups が見つかりません');
+
+      let audioComp = null;
+      for (const g of groups) {
+        for (const c of (g.components || [])) {
+          if (c.audio_file) {
+            audioComp = c;
+            break;
+          }
+        }
+        if (audioComp) break;
+      }
+      if (!audioComp) throw new Error('audio_file フィールドが見つかりません');
+
+      const sampleRate = audioComp.audio_sample_rate;
+      if (!sampleRate) throw new Error('audio_sample_rate が見つかりません');
+
+      // Decode base64 → raw bytes (signed 16-bit LE stereo PCM)
+      const b64 = audioComp.audio_file;
+      const rawBytes = base64ToUint8Array(b64);
+
+      // Validate: must be multiple of 4 (2ch × 2 bytes)
+      if (rawBytes.length % 4 !== 0) throw new Error('データサイズが不正 (stereo int16 に合わない)');
+
+      // Build WAV file in memory — returns ArrayBuffer
+      const wavBuffer = buildWav(rawBytes, sampleRate, 2, 16);
+      return wavBuffer;
+    }
+
+    // Standard RIFF WAV header builder
+    function buildWav(pcmData, sampleRate, numChannels, bitsPerSample) {
+      const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+      const blockAlign = numChannels * (bitsPerSample / 8);
+      const dataSize = pcmData.byteLength;
+      const headerSize = 44;
+      const totalSize = headerSize + dataSize;
+
+      const buf = new ArrayBuffer(totalSize);
+      const view = new DataView(buf);
+
+      let o = 0;
+
+      // RIFF chunk
+      writeStr(view, o, 'RIFF'); o += 4;
+      view.setUint32(o, totalSize - 8, true); o += 4;
+      writeStr(view, o, 'WAVE'); o += 4;
+
+      // fmt sub-chunk
+      writeStr(view, o, 'fmt '); o += 4;
+      view.setUint32(o, 16, true); o += 4;  // PCM
+      view.setUint16(o, 1, true); o += 2;  // AudioFormat = PCM
+      view.setUint16(o, numChannels, true); o += 2;
+      view.setUint32(o, sampleRate, true); o += 4;
+      view.setUint32(o, byteRate, true); o += 4;
+      view.setUint16(o, blockAlign, true); o += 2;
+      view.setUint16(o, bitsPerSample, true); o += 2;
+
+      // data sub-chunk
+      writeStr(view, o, 'data'); o += 4;
+      view.setUint32(o, dataSize, true); o += 4;
+
+      // PCM samples
+      new Uint8Array(buf, o).set(new Uint8Array(pcmData.buffer ?? pcmData));
+
+      return buf;
+    }
+
+    function writeStr(view, offset, str) {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
+      }
+    }
+
+    // Base64 → Uint8Array
+    function base64ToUint8Array(b64) {
+      const clean = b64.replace(/\s/g, '');
+      const binStr = atob(clean);
+      const bytes = new Uint8Array(binStr.length);
+      for (let i = 0; i < binStr.length; i++) {
+        bytes[i] = binStr.charCodeAt(i);
+      }
+      return bytes;
+    }
+
+    // ─── ZIP download ────────────────────────────────────────────────────────────
+    async function downloadZip() {
+      const done = files.filter(e => e.status === 'done' && e.wavBuffer);
+      if (done.length === 0) return;
+
+      if (!window.fflate || !window.fflate.zipSync) {
+        logError('ZIP生成', 'fflate が読み込まれていません');
+        return;
+      }
+
+      const prevText = dlZip.textContent;
+      dlZip.textContent = '生成中...';
+      dlZip.disabled = true;
+
+      try {
+        const fileMap = {};
+        for (const entry of done) {
+          const baseName = entry.file.name.replace(/\.vitaltable$/i, '');
+          fileMap[`${baseName}.wav`] = new Uint8Array(entry.wavBuffer);
+        }
+
+        const zipped = window.fflate.zipSync(fileMap, { level: 0 });
+        const blob = new Blob([zipped], { type: 'application/zip' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'vitaltable_wav.zip';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      } catch (err) {
+        logError('ZIP生成', err?.message || String(err));
+      } finally {
+        dlZip.textContent = prevText;
+        dlZip.disabled = false;
+        updateButtons();
+      }
+    }
+
+    // ─── Error log ───────────────────────────────────────────────────────────────
+    function logError(name, msg) {
+      errorLog.classList.add('visible');
+      errorLog.textContent += `${name}: ${msg}\n`;
+    }
+  </script>
+</body>
+
+</html>
