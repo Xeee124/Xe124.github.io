@@ -84,7 +84,8 @@
     .candidate-scroll-wrap { overflow:hidden; width:100%; max-width:100%; box-sizing:border-box; }
     .candidate-scroll-track { display:flex; gap:0; will-change:transform; }
     .candidate-scroll-track.animating { transition:transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94); }
-    .cand-slide { min-width:100%; max-width:100%; width:100%; box-sizing:border-box; padding:0 2px; overflow:hidden; }
+    /* cand-slideの幅はJSでwrapのpx幅を直接セットする */
+    .cand-slide { flex-shrink:0; box-sizing:border-box; padding:0 2px; overflow:hidden; }
     .cand-slide .card { max-width:100%; width:100%; box-sizing:border-box; overflow:hidden; }
     /* 自己回帰パネル */
     .ar-panel { background:#0d1b2e; border-radius:16px; padding:14px; margin-top:10px; }
