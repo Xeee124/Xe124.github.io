@@ -451,20 +451,6 @@
       els.genMeter.style.width = '0%';
     });
     wireCandNav();
-
-    // 画面リサイズ時にslide幅をpxで再計算
-    window.addEventListener('resize', () => {
-      const wrap = document.getElementById('candidateScrollWrap');
-      const track = document.getElementById('candidateList');
-      if (!wrap || !track || !state.candidateBatch.length) return;
-      const slideW = wrap.offsetWidth;
-      track.querySelectorAll('.cand-slide').forEach(slide => {
-        slide.style.width    = slideW + 'px';
-        slide.style.minWidth = slideW + 'px';
-      });
-      track.classList.remove('animating');
-      track.style.transform = `translateX(-${candCurrentIdx * slideW}px)`;
-    });
   }
 
   async function selectActiveModel(id) {
@@ -1452,11 +1438,9 @@
     counter.textContent = `${candCurrentIdx + 1} / ${total}`;
     const track = document.getElementById('candidateList');
     if (!track) return;
-    // wrapのpx幅で計算（percentage基準だとtrack全体幅が基準になりバグる）
-    const wrap = document.getElementById('candidateScrollWrap');
-    const slideW = wrap ? wrap.offsetWidth : (track.firstElementChild ? track.firstElementChild.offsetWidth : 320);
     track.classList.add('animating');
-    track.style.transform = `translateX(-${candCurrentIdx * slideW}px)`;
+    // trackのwidth:100%がwrapの幅に解決されるため、translateXの%はwrap幅基準になる
+    track.style.transform = `translateX(-${candCurrentIdx * 100}%)`;
     clearTimeout(track._animTimer);
     track._animTimer = setTimeout(() => track.classList.remove('animating'), 360);
   }
@@ -1531,15 +1515,7 @@
 
     // アナライザー初期描画（requestAnimationFrameでレイアウト確定後）
     requestAnimationFrame(() => {
-      // cand-slideの幅をwrapのpx幅に固定（percentage指定だとtrack全体幅が基準になりバグる）
-    const wrap = document.getElementById('candidateScrollWrap');
-    const slideW = wrap ? wrap.offsetWidth : 320;
-    track.querySelectorAll('.cand-slide').forEach(slide => {
-      slide.style.width = slideW + 'px';
-      slide.style.minWidth = slideW + 'px';
-    });
-
-    track.querySelectorAll('.cand-slide').forEach((slide, idx) => {
+      track.querySelectorAll('.cand-slide').forEach((slide, idx) => {
         const cand = state.candidateBatch[idx];
         if (!cand) return;
         setupAnalyzer(slide.querySelector('.cand-analyzer'), cand.vector, cand.id);
@@ -1599,11 +1575,8 @@
 
     setupCandSwipe();
     candCurrentIdx = Math.min(candCurrentIdx, state.candidateBatch.length - 1);
-    // HTML再構築後はアニメーションなしで即座に位置をセット
     track.classList.remove('animating');
-    const wrap2 = document.getElementById('candidateScrollWrap');
-    const slideW2 = wrap2 ? wrap2.offsetWidth : 320;
-    track.style.transform = `translateX(-${candCurrentIdx * slideW2}px)`;
+    track.style.transform = `translateX(-${candCurrentIdx * 100}%)`;
     updateCandNav();
   }
 
