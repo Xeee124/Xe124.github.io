@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PEAK // NORMALIZE — VENOM NEON</title>
+<title>PEAK // NORMALIZE</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@700;900&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
@@ -336,7 +336,7 @@ zipBtn.addEventListener('click', async ()=>{
   zipBtn.disabled = true;
   const zip = new JSZip();
   processed.forEach(p=>{
-    const name = p.file.name.replace(/\.wav$/i,'') + '_norm.wav';
+    const name = p.file.name.replace(/\.wav$/i,'') + '_normalized.wav';
     zip.file(name, p.blob);
   });
   const blob = await zip.generateAsync({type:'blob'});
