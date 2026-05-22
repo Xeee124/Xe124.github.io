@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<!-- Playables SDK -->
+<script>// Playables SDK v1.0.0
+(function() {
+  'use strict';
+  if (window.playablesSDK) return;
+  var HANDLER_NAME = 'playablesGameEventHandler';
+  var ANDROID_BRIDGE_NAME = '_MetaPlayablesBridge';
+  var RAF_FRAME_THRESHOLD = 3;
+  var gameReadySent = false;
+  var firstInteractionSent = false;
+  var errorSent = false;
+  var frameCount = 0;
+  var originalRAF = window.requestAnimationFrame;
+  function hasIOSBridge() { return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers[HANDLER_NAME]); }
+  function hasAndroidBridge() { return !!(window[ANDROID_BRIDGE_NAME] && typeof window[ANDROID_BRIDGE_NAME].postEvent === 'function'); }
+  function isInIframe() { return !!(window.parent && window.parent !== window); }
+  function sendEvent(eventName, payload) {
+    var message = { type: eventName, payload: payload || {}, timestamp: Date.now() };
+    if (hasIOSBridge()) { try { window.webkit.messageHandlers[HANDLER_NAME].postMessage(message); } catch (e) {} return; }
+    if (hasAndroidBridge()) { try { var p = payload || {}; p.__secureToken = window.__fbAndroidBridgeAuthToken || ''; p.timestamp = message.timestamp; window[ANDROID_BRIDGE_NAME].postEvent(eventName, JSON.stringify(p)); } catch (e) {} return; }
+    if (isInIframe()) { try { window.parent.postMessage(message, '*'); } catch (e) {} return; }
+  }
+  function onFrame() {
+    if (gameReadySent) return;
+    frameCount++;
+    if (frameCount >= RAF_FRAME_THRESHOLD) { gameReadySent = true; sendEvent('game_ready', { frame_count: frameCount, detected_at: Date.now() }); return; }
+    originalRAF.call(window, onFrame);
+  }
+  if (originalRAF) {
+    window.requestAnimationFrame = function(callback) {
+      if (!gameReadySent) {
+        return originalRAF.call(window, function(timestamp) {
+          frameCount++;
+          if (frameCount >= RAF_FRAME_THRESHOLD && !gameReadySent) { gameReadySent = true; sendEvent('game_ready', { frame_count: frameCount, detected_at: Date.now() }); }
+          callback(timestamp);
+        });
+      }
+      return originalRAF.call(window, callback);
+    };
+  }
+  function setupFirstInteractionDetection() {
+    var events = ['touchstart', 'mousedown', 'keydown'];
+    function onFirstInteraction() {
+      if (firstInteractionSent) return;
+      firstInteractionSent = true;
+      sendEvent('user_interaction_start', null);
+      for (var i = 0; i < events.length; i++) document.removeEventListener(events[i], onFirstInteraction, true);
+    }
+    for (var i = 0; i < events.length; i++) document.addEventListener(events[i], onFirstInteraction, true);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupFirstInteractionDetection);
+  else setupFirstInteractionDetection();
+  window.addEventListener('error', function(event) { if (errorSent) return; errorSent = true; sendEvent('error', { message: event.message || 'Unknown error', source: event.filename || '', lineno: event.lineno || 0, colno: event.colno || 0, auto_captured: true }); });
+  window.addEventListener('unhandledrejection', function(event) { if (errorSent) return; errorSent = true; var reason = event.reason; sendEvent('error', { message: (reason instanceof Error) ? reason.message : String(reason), type: 'unhandled_promise_rejection', auto_captured: true }); });
+  window.playablesSDK = {
+    complete: function(score) { sendEvent('game_ended', { score: score, completed: true }); },
+    error: function(message) { if (errorSent) return; errorSent = true; sendEvent('error', { message: message || 'Unknown error', auto_captured: false }); },
+    sendEvent: function(eventName, payload) { if (!eventName || typeof eventName !== 'string') return; sendEvent(eventName, payload); }
+  };
+  if (originalRAF) originalRAF.call(window, onFrame);
+})();</script>
+<!-- PLAYABLE_TOUCH_PATCH_V1 --><script>
+(function() {
+  if (window.__playableTouchPatchInstalled) return;
+  window.__playableTouchPatchInstalled = true;
+  var origAdd = EventTarget.prototype.addEventListener;
+  var blockedTypes = { touchstart: 1, touchmove: 1, wheel: 1 };
+  EventTarget.prototype.addEventListener = function(type, listener, options) {
+    if (blockedTypes[type]) {
+      if (options === undefined || options === null) options = { passive: true };
+      else if (typeof options === 'boolean') options = { capture: options, passive: true };
+      else options = Object.assign({}, options, { passive: true });
+    }
+    return origAdd.call(this, type, listener, options);
+  };
+})();
+</script><script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>HD位相回転ツール – 理想ヒルベルト 65k</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:#05070c;color:#e5e7eb;font-family:"Noto Sans JP",system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif;-webkit-font-smoothing:antialiased}
+.container{max-width:980px;margin:0 auto;padding:20px}
+header{margin-bottom:14px}
+h1{font-size:1.7rem;margin:0 0 6px;font-weight:800;background:linear-gradient(90deg,#38bdf8,#818cf8,#c084fc);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:#9aa4b2;font-size:.95rem}
+.card{background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.05);backdrop-filter:blur(12px)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{appearance:none;border:0;border-radius:12px;padding:11px 18px;font-weight:700;color:#0b1220;background:#e2e8f0;cursor:pointer;transition:.18s;font-size:.9rem}
+.btn:hover{transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.btn-primary{color:#fff;background:linear-gradient(90deg,#0ea5e9,#6366f1);box-shadow:0 10px 24px rgba(99,102,241,.35)}
+.btn-ghost{background:#0f172a;color:#cbd5e1;border:1px solid #1f2937}
+input[type=file]{color:#cbd5e1;font-size:.9rem}
+.slider-wrap{margin-top:14px;background:#080f1c;border:1px solid #17243d;border-radius:16px;padding:14px}
+.slider-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.phase-val{font-variant-numeric:tabular-nums;font-weight:800;font-size:1.35rem;color:#7dd3fc;text-shadow:0 0 18px rgba(125,211,252,.35)}
+.range-slider{width:100%;height:44px;-webkit-appearance:none;appearance:none;background:transparent;touch-action:none;user-select:none;-webkit-user-select:none}
+.range-slider::-webkit-slider-runnable-track{height:8px;background:#0f1b31;border-radius:999px;border:1px solid #1e2d4d}
+.range-slider::-webkit-slider-thumb{-webkit-appearance:none;width:30px;height:30px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#fff,#7dd3fc 40%,#38bdf8 70%);border:2px solid #020617;box-shadow:0 0 0 5px rgba(56,189,248,.12),0 8px 18px rgba(2,132,199,.55);margin-top:-12px}
+.range-slider::-moz-range-track{height:8px;background:#0f1b31;border-radius:999px;border:1px solid #1e2d4d}
+.range-slider::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:#38bdf8;border:2px solid #020617;box-shadow:0 0 0 5px rgba(56,189,248,.12)}
+canvas{width:100%;height:220px;display:block;border-radius:14px;background:radial-gradient(1000px 180px at 50% 0%,rgba(56,189,248,.09),transparent),#060b15;border:1px solid #142136}
+#iq{height:200px;margin-top:12px}
+.grid{display:grid;grid-template-columns:1fr;gap:14px;margin-top:14px}
+@media(min-width:880px){.grid{grid-template-columns:1.35fr .65fr}}
+.note{color:#8c96a8;font-size:.84rem;line-height:1.6;margin-top:10px}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;background:#0a1933;color:#7dd3fc;border:1px solid #14345f;font-size:.75rem;font-weight:700}
+.status{margin-top:8px;color:#a5b4fc;min-height:1.4em;font-size:.92rem}
+
+/* ===== TABS ===== */
+.tabs-bar{display:flex;gap:4px;margin-bottom:16px;background:#080e1a;border:1px solid #1a2540;border-radius:14px;padding:4px}
+.tab-btn{flex:1;padding:10px 0;border:0;border-radius:10px;font-weight:700;font-size:.95rem;cursor:pointer;transition:.2s;background:transparent;color:#64748b}
+.tab-btn.active{background:linear-gradient(90deg,#0ea5e9,#6366f1);color:#fff;box-shadow:0 4px 16px rgba(99,102,241,.4)}
+.tab-pane{display:none}
+.tab-pane.active{display:block}
+
+/* ===== NORMALIZE ===== */
+.norm-row{display:flex;align-items:center;gap:10px;margin-top:10px;background:#080f1c;border:1px solid #17243d;border-radius:14px;padding:10px 14px;flex-wrap:wrap}
+.norm-toggle{position:relative;width:44px;height:24px;flex-shrink:0}
+.norm-toggle input{opacity:0;width:0;height:0;position:absolute}
+.norm-toggle-slider{position:absolute;inset:0;border-radius:999px;background:#1a2540;cursor:pointer;transition:.2s}
+.norm-toggle-slider::before{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;border-radius:50%;background:#4b5563;transition:.2s}
+.norm-toggle input:checked + .norm-toggle-slider{background:linear-gradient(90deg,#0ea5e9,#6366f1)}
+.norm-toggle input:checked + .norm-toggle-slider::before{transform:translateX(20px);background:#fff}
+.norm-label{color:#94a3b8;font-size:.88rem;font-weight:600;user-select:none}
+.norm-label.active-lbl{color:#7dd3fc}
+.norm-sep{width:1px;height:22px;background:#1e2d4d;margin:0 2px}
+.norm-db-wrap{display:flex;align-items:center;gap:6px}
+.norm-db-label{color:#94a3b8;font-size:.85rem}
+.norm-db-input{
+  width:74px;height:32px;border-radius:8px;border:1px solid #1e2d4d;
+  background:#060b15;color:#7dd3fc;font-size:.95rem;font-weight:800;
+  font-variant-numeric:tabular-nums;text-align:center;
+  padding:0 4px;cursor:ns-resize;user-select:none;-webkit-user-select:none;
+  transition:border-color .15s;
+}
+.norm-db-input:focus{outline:none;border-color:#38bdf8}
+.norm-db-input.editing{cursor:text}
+.norm-db-unit{color:#64748b;font-size:.85rem}
+
+/* ===== BATCH TAB ===== */
+.drop-zone{
+  border:2px dashed #1e3a5c;border-radius:18px;padding:36px 20px;
+  text-align:center;cursor:pointer;transition:.2s;
+  background:rgba(14,165,233,.03);margin-top:4px;
+}
+.drop-zone.drag-over{border-color:#38bdf8;background:rgba(56,189,248,.06)}
+.drop-zone-icon{font-size:2.4rem;margin-bottom:8px;opacity:.6}
+.drop-zone-text{color:#64748b;font-size:.95rem}
+.drop-zone-text strong{color:#94a3b8}
+.batch-file-list{margin-top:14px;display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto}
+.batch-file-item{
+  display:flex;align-items:center;gap:10px;
+  background:#080f1c;border:1px solid #17243d;border-radius:12px;
+  padding:9px 14px;font-size:.88rem;
+}
+.batch-file-name{flex:1;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.batch-file-status{font-size:.8rem;font-weight:700;padding:3px 9px;border-radius:999px;flex-shrink:0}
+.batch-file-status.pending{color:#64748b;background:#0d1526;border:1px solid #1e2d4d}
+.batch-file-status.processing{color:#fbbf24;background:#1c1407;border:1px solid #3d2c00;animation:pulse .8s infinite}
+.batch-file-status.done{color:#34d399;background:#021a10;border:1px solid #065f3c}
+.batch-file-status.error{color:#f87171;background:#1a0505;border:1px solid #7f1d1d}
+.batch-file-deg{color:#7dd3fc;font-size:.8rem;font-variant-numeric:tabular-nums;flex-shrink:0}
+.batch-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
+.batch-progress-wrap{margin-top:12px;display:none}
+.batch-progress-bar-bg{background:#0d1526;border-radius:999px;height:8px;overflow:hidden;border:1px solid #1e2d4d}
+.batch-progress-bar{height:100%;border-radius:999px;background:linear-gradient(90deg,#0ea5e9,#6366f1);width:0%;transition:width .3s}
+.batch-status{color:#a5b4fc;font-size:.92rem;margin-top:6px;min-height:1.4em}
+.batch-clear-btn{margin-left:auto;font-size:.82rem;padding:7px 13px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* ===== JSZip CDN loading indicator ===== */
+.lib-status{font-size:.78rem;color:#475569;margin-left:4px}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>HD位相回転ツール</h1>
+    <div class="sub">FFTベース理想ヒルベルト変換による位相回転 — 65,536タップ相当の超高解像度</div>
+  </header>
+
+  <!-- TAB BAR -->
+  <div class="tabs-bar">
+    <button class="tab-btn" id="tabBtnBatch" onclick="switchTab('batch')">Batch</button>
+    <button class="tab-btn" id="tabBtnSingle" onclick="switchTab('single')">Single</button>
+  </div>
+
+  <!-- ========== BATCH TAB ========== -->
+  <div class="tab-pane" id="tabBatch">
+    <div class="card">
+      <div class="row">
+        <span class="badge">BATCH PHASE HACK</span>
+        <span class="badge">ZIP DOWNLOAD</span>
+        <span class="badge">IDEAL HILBERT</span>
+      </div>
+
+      <!-- Drop Zone -->
+      <div class="drop-zone" id="batchDropZone">
+        <div class="drop-zone-icon">🎵</div>
+        <div class="drop-zone-text"><strong>ファイルをドラッグ＆ドロップ</strong> または クリックして選択<br>複数ファイル対応（mp3 / wav / flac / ogg 等）</div>
+        <input type="file" id="batchFileInput" accept="audio/*" multiple style="display:none">
+      </div>
+
+      <!-- File List -->
+      <div class="batch-file-list" id="batchFileList"></div>
+
+      <!-- Normalize (Batch) -->
+      <div class="norm-row" id="batchNormRow">
+        <label class="norm-toggle">
+          <input type="checkbox" id="batchNormOn" checked>
+          <span class="norm-toggle-slider"></span>
+        </label>
+        <span class="norm-label active-lbl" id="batchNormLabel">ノーマライズ</span>
+        <div class="norm-sep"></div>
+        <div class="norm-db-wrap">
+          <span class="norm-db-label">Target:</span>
+          <input class="norm-db-input" id="batchNormDb" type="text" value="-0.1" title="ダブルクリックで編集 / ドラッグで変更">
+          <span class="norm-db-unit">dBFS</span>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="batch-actions">
+        <button class="btn btn-primary" id="batchRunBtn" disabled>Phase Hack !! → ZIP</button>
+        <button class="btn btn-ghost batch-clear-btn" id="batchClearBtn">リストをクリア</button>
+        <span class="lib-status" id="jszipStatus"></span>
+      </div>
+      <div class="batch-progress-wrap" id="batchProgressWrap">
+        <div class="batch-progress-bar-bg"><div class="batch-progress-bar" id="batchProgressBar"></div></div>
+        <div class="batch-status" id="batchStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== SINGLE TAB ========== -->
+  <div class="tab-pane" id="tabSingle">
+    <div class="card">
+      <div class="row">
+        <span class="badge">IDEAL HILBERT</span>
+        <span class="badge">REAL-TIME WORKLET</span>
+        <span class="badge">端末解像度対応</span>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <input id="file" type="file" accept="audio/*">
+        <button id="play" class="btn btn-primary">再生</button>
+        <button id="stop" class="btn btn-ghost">停止</button>
+        <button id="export" class="btn btn-ghost">WAV書き出し</button>
+        <button id="phaseHack" class="btn btn-primary">Phase Hack !!</button>
+      </div>
+      <div class="status" id="status">音声ファイルを選択してください（30秒以内推奨）</div>
+
+      <!-- Normalize (Single) -->
+      <div class="norm-row">
+        <label class="norm-toggle">
+          <input type="checkbox" id="singleNormOn" checked>
+          <span class="norm-toggle-slider"></span>
+        </label>
+        <span class="norm-label active-lbl" id="singleNormLabel">ノーマライズ</span>
+        <div class="norm-sep"></div>
+        <div class="norm-db-wrap">
+          <span class="norm-db-label">Target:</span>
+          <input class="norm-db-input" id="singleNormDb" type="text" value="-0.1" title="ダブルクリックで編集 / ドラッグで変更">
+          <span class="norm-db-unit">dBFS</span>
+        </div>
+      </div>
+
+      <div class="slider-wrap">
+        <div class="slider-head">
+          <div>位相回転角</div>
+          <div class="phase-val" id="phaseVal">0.0°</div>
+        </div>
+        <input type="range" id="phase" class="range-slider" min="-180" max="180" value="0" step="0.1">
+        <div class="note">スライダー操作中はページスクロールをロックします。ホイールで0.01°単位の微調整。</div>
+      </div>
+
+      <div class="grid">
+        <div>
+          <canvas id="waveform"></canvas>
+          <div class="note">上：元波形（灰）/ 回転後（水色）。端末のピクセル密度に合わせてmin/maxエンベロープ描画。</div>
+        </div>
+        <div>
+          <canvas id="iq"></canvas>
+          <div class="note">I/Qベクトル表示。理想ヒルベルトで生成した直交成分。</div>
+        </div>
+        <div class="note">※ 本ツールは音声全体をFFTして解析信号を生成（理想ヒルベルト）。これは65,536タップ以上のFIRと同等の特性です。リアルタイム回転はAudioWorkletで I·cosθ − Q·sinθ を計算。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// =========================================================
+// TAB SWITCHING
+// =========================================================
+function switchTab(name){
+  document.getElementById('tabBatch').classList.toggle('active', name==='batch');
+  document.getElementById('tabSingle').classList.toggle('active', name==='single');
+  document.getElementById('tabBtnBatch').classList.toggle('active', name==='batch');
+  document.getElementById('tabBtnSingle').classList.toggle('active', name==='single');
+  if(name==='single'){ resizeWave(); resizeIQ(); }
+}
+// Default: Batch
+switchTab('batch');
+
+// =========================================================
+// SHARED DSP UTILITIES
+// =========================================================
+function fft(re, im){
+  const n = re.length;
+  for(let i=1,j=0;i<n;i++){
+    let bit = n>>1;
+    for(; j & bit; bit>>=1) j ^= bit;
+    j ^= bit;
+    if(i<j){ let tr=re[i]; re[i]=re[j]; re[j]=tr; let ti=im[i]; im[i]=im[j]; im[j]=ti; }
+  }
+  for(let len=2; len<=n; len<<=1){
+    const ang = -2*Math.PI/len;
+    const wlenRe = Math.cos(ang), wlenIm = Math.sin(ang);
+    for(let i=0;i<n;i+=len){
+      let wr=1, wi=0;
+      for(let j=0;j<len/2;j++){
+        const uRe=re[i+j], uIm=im[i+j];
+        const vRe=re[i+j+len/2]*wr - im[i+j+len/2]*wi;
+        const vIm=re[i+j+len/2]*wi + im[i+j+len/2]*wr;
+        re[i+j]=uRe+vRe; im[i+j]=uIm+vIm;
+        re[i+j+len/2]=uRe-vRe; im[i+j+len/2]=uIm-vIm;
+        const nr = wr*wlenRe - wi*wlenIm;
+        wi = wr*wlenIm + wi*wlenRe; wr = nr;
+      }
+    }
+  }
+}
+function ifft(re, im){
+  const n=re.length;
+  for(let i=0;i<n;i++) im[i] = -im[i];
+  fft(re,im);
+  for(let i=0;i<n;i++){ re[i]/=n; im[i] = -im[i]/n; }
+}
+function hilbert(sig){
+  const N = 1 << Math.ceil(Math.log2(sig.length));
+  const re = new Float64Array(N);
+  const im = new Float64Array(N);
+  re.set(sig);
+  fft(re,im);
+  const h = N>>1;
+  for(let i=1;i<h;i++){ re[i]*=2; im[i]*=2; }
+  for(let i=h+1;i<N;i++){ re[i]=0; im[i]=0; }
+  ifft(re,im);
+  const out = new Float32Array(sig.length);
+  for(let i=0;i<sig.length;i++) out[i]=im[i];
+  return out;
+}
+
+// Phase Hack core (works on raw arrays)
+function normalizeDegFn(deg){
+  return ((deg + 180) % 360 + 360) % 360 - 180;
+}
+function evaluateSignedBalance(io, qo, deg){
+  const len = Math.min(io.length, qo.length);
+  const phase = normalizeDegFn(deg) * Math.PI / 180;
+  const c = Math.cos(phase), s = Math.sin(phase);
+  const stride = Math.max(1, Math.floor(len / 3000));
+  let max = -Infinity, min = Infinity;
+  for(let i = 0; i < len; i += stride){
+    const y = io[i] * c - qo[i] * s;
+    if(y > max) max = y;
+    if(y < min) min = y;
+  }
+  return max + min;
+}
+function findPhaseHackAngle(io, qo){
+  const roots = [];
+  const rootTolerance = 1e-4;
+  const searchStep = 0.5;
+  let prevDeg = -180;
+  let prevVal = evaluateSignedBalance(io, qo, prevDeg);
+  for(let deg = -179.5; deg <= 180; deg += searchStep){
+    const curVal = evaluateSignedBalance(io, qo, deg);
+    if(Number.isFinite(prevVal) && Number.isFinite(curVal)){
+      if(Math.abs(prevVal) <= rootTolerance) roots.push(prevDeg);
+      if(prevVal === 0 || curVal === 0 || (prevVal < 0 && curVal > 0) || (prevVal > 0 && curVal < 0)){
+        let lo = prevDeg, hi = deg, fLo = prevVal;
+        for(let i = 0; i < 32; i++){
+          const mid = (lo + hi) / 2;
+          const fMid = evaluateSignedBalance(io, qo, mid);
+          if(!Number.isFinite(fMid)) break;
+          if(Math.abs(fMid) <= rootTolerance){ lo = hi = mid; break; }
+          if((fLo < 0 && fMid > 0) || (fLo > 0 && fMid < 0)){ hi = mid; }
+          else { lo = mid; fLo = fMid; }
+        }
+        roots.push(normalizeDegFn((lo + hi) / 2));
+      }
+    }
+    prevDeg = deg; prevVal = curVal;
+  }
+  if(roots.length){
+    const uniq = [];
+    for(const deg of roots){
+      const n = normalizeDegFn(deg);
+      if(!uniq.some(v => Math.abs(normalizeDegFn(v - n)) < 0.2)) uniq.push(n);
+    }
+    uniq.sort((a, b) => Math.abs(a) - Math.abs(b));
+    return normalizeDegFn(uniq[0]);
+  }
+  let bestDeg = 0, bestScore = Infinity;
+  for(let deg = -180; deg <= 180; deg += 1){
+    const sc = Math.abs(evaluateSignedBalance(io, qo, deg));
+    if(sc < bestScore){ bestScore = sc; bestDeg = deg; }
+  }
+  const coarse = bestDeg;
+  for(let deg = coarse - 1.5; deg <= coarse + 1.5; deg += 0.01){
+    const sc = Math.abs(evaluateSignedBalance(io, qo, deg));
+    if(sc < bestScore){ bestScore = sc; bestDeg = deg; }
+  }
+  return normalizeDegFn(bestDeg);
+}
+
+// Apply phase rotation → output channels
+function applyPhaseRotation(originalData, hilbertData, deg){
+  const ph = deg * Math.PI / 180;
+  const c = Math.cos(ph), s = Math.sin(ph);
+  return originalData.map((io, i) => {
+    const qo = hilbertData[i];
+    const o = new Float32Array(io.length);
+    for(let n = 0; n < io.length; n++) o[n] = io[n] * c - qo[n] * s;
+    return o;
+  });
+}
+
+// True-Peak normalization (linear domain, per-sample)
+// targetDb: e.g. -0.1
+function applyNormalize(channels, targetDb){
+  const targetLin = Math.pow(10, targetDb / 20);
+  let peak = 0;
+  for(const ch of channels){
+    for(let i = 0; i < ch.length; i++){
+      const a = Math.abs(ch[i]);
+      if(a > peak) peak = a;
+    }
+  }
+  if(peak === 0) return channels;
+  const gain = targetLin / peak;
+  return channels.map(ch => {
+    const o = new Float32Array(ch.length);
+    for(let i = 0; i < ch.length; i++) o[i] = ch[i] * gain;
+    return o;
+  });
+}
+
+// WAV encoder
+function encodeWAV(channels, rate){
+  const numCh = channels.length, len = channels[0].length, bytes=2, block=numCh*bytes;
+  const buf = new ArrayBuffer(44 + len*block);
+  const v = new DataView(buf);
+  const w = (o,s)=>{ for(let i=0;i<s.length;i++) v.setUint8(o+i, s.charCodeAt(i)); };
+  w(0,'RIFF'); v.setUint32(4,36+len*block,true); w(8,'WAVE'); w(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,numCh,true);
+  v.setUint32(24,rate,true); v.setUint32(28,rate*block,true);
+  v.setUint16(32,block,true); v.setUint16(34,16,true);
+  w(36,'data'); v.setUint32(40,len*block,true);
+  let off=44;
+  for(let i=0;i<len;i++){
+    for(let ch=0;ch<numCh;ch++){
+      let s = Math.max(-1, Math.min(1, channels[ch][i]));
+      v.setInt16(off, s<0 ? s*0x8000 : s*0x7FFF, true); off+=2;
+    }
+  }
+  return buf;
+}
+
+// =========================================================
+// NORMALIZE UI HELPER  (shared for both tabs)
+// =========================================================
+function setupNormDbInput(inputEl, onToggle, toggleEl, labelEl){
+  // Toggle label sync
+  function syncLabel(){
+    const on = toggleEl.checked;
+    labelEl.classList.toggle('active-lbl', on);
+    inputEl.style.opacity = on ? '1' : '0.35';
+    if(onToggle) onToggle(on);
+  }
+  toggleEl.addEventListener('change', syncLabel);
+  syncLabel();
+
+  // Drag to change value
+  let dragStart = null, dragStartVal = 0;
+  inputEl.addEventListener('pointerdown', e => {
+    if(e.detail === 2) return; // double-click → editing
+    dragStart = e.clientY;
+    dragStartVal = parseFloat(inputEl.value) || 0;
+    inputEl.setPointerCapture(e.pointerId);
+    inputEl.classList.remove('editing');
+    e.preventDefault();
+  });
+  inputEl.addEventListener('pointermove', e => {
+    if(dragStart === null) return;
+    const delta = (dragStart - e.clientY) * 0.01; // up = positive
+    let v = dragStartVal + delta;
+    v = Math.round(v * 10000) / 10000;
+    v = Math.max(-60, Math.min(0, v));
+    inputEl.value = v.toFixed(4).replace(/\.?0+$/, '') || '0';
+    e.preventDefault();
+  });
+  inputEl.addEventListener('pointerup', e => {
+    if(dragStart !== null && Math.abs(e.clientY - dragStart) < 3){
+      // tiny movement → treat as click, enable editing
+      inputEl.classList.add('editing');
+      inputEl.focus();
+      inputEl.select();
+    }
+    dragStart = null;
+    inputEl.releasePointerCapture(e.pointerId);
+  });
+  inputEl.addEventListener('dblclick', () => {
+    inputEl.classList.add('editing');
+    inputEl.focus();
+    inputEl.select();
+  });
+  inputEl.addEventListener('blur', () => {
+    inputEl.classList.remove('editing');
+    let v = parseFloat(inputEl.value);
+    if(!Number.isFinite(v)) v = -0.1;
+    v = Math.max(-60, Math.min(0, v));
+    inputEl.value = v.toFixed(4).replace(/\.?0+$/, '') || '0';
+  });
+  inputEl.addEventListener('keydown', e => {
+    if(e.key === 'Enter') inputEl.blur();
+    if(e.key === 'Escape'){ inputEl.value = dragStartVal; inputEl.blur(); }
+  });
+}
+
+function getNormTarget(inputEl){ return parseFloat(inputEl.value) || -0.1; }
+
+// =========================================================
+// SINGLE TAB
+// =========================================================
+const $ = id => document.getElementById(id);
+const fileInput = $('file');
+const playBtn = $('play');
+const stopBtn = $('stop');
+const exportBtn = $('export');
+const phaseHackBtn = $('phaseHack');
+const phaseSlider = $('phase');
+const phaseValEl = $('phaseVal');
+const statusEl = $('status');
+const waveformCanvas = $('waveform');
+const iqCanvas = $('iq');
+const waveCtx = waveformCanvas.getContext('2d');
+const iqCtx = iqCanvas.getContext('2d');
+const singleNormOnEl = $('singleNormOn');
+const singleNormDbEl = $('singleNormDb');
+
+let audioCtx, workletNode;
+let originalData = [];
+let hilbertData = [];
+let sampleRate = 48000;
+let isPlaying = false;
+
+setupNormDbInput(singleNormDbEl, null, singleNormOnEl, $('singleNormLabel'));
+
+// --- Worklet ---
+const workletCode = `
+class PhaseRotatorProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors(){ return [{name:'phase', defaultValue:0, automationRate:'k-rate'}]; }
+  constructor(){ super(); this.i=null; this.q=null; this.pos=0; this.port.onmessage=e=>{ if(e.data.i){ this.i=e.data.i; this.q=e.data.q; this.pos=0; } }; }
+  process(inputs, outputs, parameters){
+    const out = outputs[0];
+    if(!this.i || !this.q) return true;
+    const phaseDeg = parameters.phase[0];
+    const ph = phaseDeg * Math.PI/180;
+    const c = Math.cos(ph), s = Math.sin(ph);
+    const len = this.i[0].length;
+    for(let i=0;i<out[0].length;i++){
+      if(this.pos >= len){ for(let ch=0; ch<out.length; ch++) out[ch][i]=0; continue; }
+      for(let ch=0; ch<out.length; ch++){
+        const ib = this.i[ch], qb = this.q[ch];
+        out[ch][i] = ib ? ib[this.pos]*c - qb[this.pos]*s : 0;
+      }
+      this.pos++;
+    }
+    if(this.pos >= len) this.port.postMessage({ended:true});
+    return true;
+  }
+}
+registerProcessor('phase-rotator', PhaseRotatorProcessor);
+`;
+
+async function initAudio(){
+  if(audioCtx) return;
+  audioCtx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:48000});
+  const blob = new Blob([workletCode],{type:'application/javascript'});
+  const url = URL.createObjectURL(blob);
+  await audioCtx.audioWorklet.addModule(url);
+}
+
+// High DPI
+function resizeWave(){
+  const dpr = Math.min(window.devicePixelRatio||1,3);
+  const r = waveformCanvas.getBoundingClientRect();
+  waveformCanvas.width = Math.max(1, Math.floor(r.width * dpr));
+  waveformCanvas.height = Math.max(1, Math.floor(r.height * dpr));
+  waveCtx.setTransform(1,0,0,1,0,0); waveCtx.scale(dpr,dpr); drawWaveform();
+}
+function resizeIQ(){
+  const dpr = Math.min(window.devicePixelRatio||1,3);
+  const r = iqCanvas.getBoundingClientRect();
+  iqCanvas.width = Math.max(1, Math.floor(r.width * dpr));
+  iqCanvas.height = Math.max(1, Math.floor(r.height * dpr));
+  iqCtx.setTransform(1,0,0,1,0,0); iqCtx.scale(dpr,dpr); drawIQ();
+}
+window.addEventListener('resize', ()=>{ resizeWave(); resizeIQ(); });
+
+function drawWaveform(){
+  const w = waveformCanvas.clientWidth, h = waveformCanvas.clientHeight;
+  waveCtx.clearRect(0,0,w,h);
+  waveCtx.fillStyle='#060b15'; waveCtx.fillRect(0,0,w,h);
+  waveCtx.beginPath(); waveCtx.moveTo(0,h/2); waveCtx.lineTo(w,h/2);
+  waveCtx.strokeStyle='rgba(255,255,255,0.06)'; waveCtx.stroke();
+  if(!originalData.length) return;
+  const len = originalData[0].length;
+  const spp = len / w;
+  const mid = h/2, scale = h*0.43;
+  const phase = parseFloat(phaseSlider.value)*Math.PI/180;
+  const c = Math.cos(phase), s = Math.sin(phase);
+  const io = originalData[0], qo = hilbertData[0];
+  for(let x=0;x<w;x++){
+    const i0 = Math.floor(x*spp);
+    let i1 = Math.floor((x+1)*spp);
+    if(i1<=i0) i1=i0+1; if(i1>len) i1=len;
+    let minO=1, maxO=-1, minR=1, maxR=-1;
+    for(let i=i0;i<i1;i++){
+      const o = io[i]; if(o<minO)minO=o; if(o>maxO)maxO=o;
+      const r = o*c - qo[i]*s; if(r<minR)minR=r; if(r>maxR)maxR=r;
+    }
+    const xp = x+0.5;
+    waveCtx.beginPath(); waveCtx.strokeStyle='rgba(148,163,184,0.5)'; waveCtx.moveTo(xp, mid-maxO*scale); waveCtx.lineTo(xp, mid-minO*scale); waveCtx.stroke();
+    waveCtx.beginPath(); waveCtx.strokeStyle='rgba(56,189,248,0.95)'; waveCtx.moveTo(xp, mid-maxR*scale); waveCtx.lineTo(xp, mid-minR*scale); waveCtx.stroke();
+  }
+}
+function drawIQ(){
+  const w = iqCanvas.clientWidth, h=iqCanvas.clientHeight;
+  iqCtx.clearRect(0,0,w,h); iqCtx.fillStyle='#05080e'; iqCtx.fillRect(0,0,w,h);
+  if(!originalData.length) return;
+  const cx=w/2, cy=h/2, r=Math.min(w,h)*0.42;
+  iqCtx.strokeStyle='rgba(148,163,184,0.18)'; iqCtx.lineWidth=1;
+  iqCtx.beginPath(); iqCtx.arc(cx,cy,r,0,Math.PI*2); iqCtx.stroke();
+  iqCtx.beginPath(); iqCtx.moveTo(cx-r,cy); iqCtx.lineTo(cx+r,cy); iqCtx.moveTo(cx,cy-r); iqCtx.lineTo(cx,cy+r); iqCtx.stroke();
+  iqCtx.fillStyle='#64748b'; iqCtx.font='11px sans-serif';
+  iqCtx.fillText('I',cx+r-8,cy-5); iqCtx.fillText('Q',cx+5,cy-r+10);
+  const ang = parseFloat(phaseSlider.value)*Math.PI/180;
+  const c=Math.cos(ang), s=Math.sin(ang);
+  const io=originalData[0], qo=hilbertData[0];
+  const len=io.length, step=Math.max(1,Math.floor(len/2000));
+  iqCtx.fillStyle='rgba(34,211,238,0.9)';
+  for(let i=0;i<len;i+=step){
+    const x0=io[i], y0=qo[i];
+    const xr=x0*c - y0*s, yr=x0*s + y0*c;
+    const px=cx + xr*r*0.9, py=cy - yr*r*0.9;
+    iqCtx.beginPath(); iqCtx.arc(px,py,1.1,0,Math.PI*2); iqCtx.fill();
+  }
+  iqCtx.strokeStyle='#f59e0b'; iqCtx.lineWidth=2;
+  iqCtx.beginPath(); iqCtx.moveTo(cx,cy);
+  iqCtx.lineTo(cx + Math.cos(ang)*r*0.78, cy - Math.sin(ang)*r*0.78); iqCtx.stroke();
+}
+
+// File load
+fileInput.addEventListener('change', async e=>{
+  const f = e.target.files[0]; if(!f) return;
+  statusEl.textContent='デコード中...';
+  await initAudio();
+  const buf = await f.arrayBuffer();
+  const audio = await audioCtx.decodeAudioData(buf);
+  sampleRate = audio.sampleRate;
+  const chs = Math.min(2, audio.numberOfChannels);
+  originalData = []; hilbertData=[];
+  const maxLen = Math.min(audio.length, sampleRate*30);
+  for(let c=0;c<chs;c++){
+    const d = audio.getChannelData(c);
+    originalData.push(new Float32Array(d.subarray(0,maxLen)));
+  }
+  if(audio.length > maxLen) statusEl.textContent='30秒にトリミングしました – 理想ヒルベルト計算中...';
+  else statusEl.textContent='理想ヒルベルト変換中...';
+  await new Promise(r=>setTimeout(r,20));
+  for(let c=0;c<originalData.length;c++){
+    hilbertData.push(hilbert(originalData[c]));
+    statusEl.textContent=`Hilbert ${c+1}/${originalData.length}...`;
+    await new Promise(r=>setTimeout(r,10));
+  }
+  statusEl.textContent='準備完了 — 65,536タップ相当の理想特性';
+  resizeWave(); resizeIQ(); stopPlayback();
+});
+
+// Playback
+async function startPlayback(){
+  if(!originalData.length){ statusEl.textContent='先に音声を選択してください'; return; }
+  if(workletNode){ try{workletNode.disconnect();}catch{} workletNode=null; }
+  isPlaying = false;
+  await initAudio();
+  if(audioCtx.state==='suspended') await audioCtx.resume();
+  workletNode = new AudioWorkletNode(audioCtx,'phase-rotator',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[originalData.length]});
+  workletNode.port.onmessage = e=>{ if(e.data.ended){ workletNode=null; stopPlayback(); } };
+  workletNode.port.postMessage({i: originalData, q: hilbertData});
+  workletNode.parameters.get('phase').setValueAtTime(parseFloat(phaseSlider.value), audioCtx.currentTime);
+  workletNode.connect(audioCtx.destination);
+  isPlaying=true; playBtn.textContent='再生中…';
+}
+function stopPlayback(){
+  if(workletNode){ try{workletNode.disconnect();}catch{} workletNode=null; }
+  isPlaying=false; playBtn.textContent='再生';
+}
+playBtn.addEventListener('click', ()=>{ if(isPlaying) stopPlayback(); else startPlayback(); });
+stopBtn.addEventListener('click', stopPlayback);
+
+// Phase control
+function updatePhase(){
+  const v = parseFloat(phaseSlider.value);
+  phaseValEl.textContent = v.toFixed(1)+'°';
+  if(workletNode) workletNode.parameters.get('phase').setValueAtTime(v, audioCtx?.currentTime||0);
+  drawWaveform(); drawIQ();
+}
+phaseSlider.addEventListener('input', updatePhase);
+
+let isDragging=false;
+phaseSlider.addEventListener('pointerdown', e=>{
+  isDragging=true; document.body.style.overflow='hidden'; document.body.style.touchAction='none';
+  try{ phaseSlider.setPointerCapture(e.pointerId); }catch{}
+});
+['pointerup','pointercancel','pointerleave'].forEach(t=>{
+  phaseSlider.addEventListener(t, e=>{
+    isDragging=false; document.body.style.overflow=''; document.body.style.touchAction='';
+    try{ phaseSlider.releasePointerCapture(e.pointerId); }catch{}
+  });
+});
+phaseSlider.addEventListener('pointermove', e=>{ if(isDragging) e.preventDefault(); }, {passive:false});
+phaseSlider.addEventListener('wheel', e=>{
+  e.preventDefault();
+  let v = parseFloat(phaseSlider.value) + e.deltaY * 0.01;
+  v = Math.max(-180, Math.min(180, v));
+  phaseSlider.value = v; updatePhase();
+}, {passive:false});
+
+// Phase Hack (Single)
+async function runPhaseHack(){
+  if(!originalData.length){ statusEl.textContent='先に音声ファイルを選択してください'; return; }
+  const wasPlaying = isPlaying;
+  stopPlayback();
+  const prevLabel = phaseHackBtn.textContent;
+  phaseHackBtn.disabled = true; playBtn.disabled = true;
+  statusEl.textContent='Phase Hack探索中...';
+  await new Promise(requestAnimationFrame);
+  const bestDeg = findPhaseHackAngle(originalData[0], hilbertData[0]);
+  phaseSlider.value = bestDeg.toFixed(2);
+  updatePhase();
+  statusEl.textContent = `Phase Hack完了 — ${bestDeg.toFixed(2)}°`;
+  phaseHackBtn.disabled = false; playBtn.disabled = false;
+  phaseHackBtn.textContent = prevLabel;
+  if(wasPlaying) startPlayback();
+}
+
+// Export (Single) — applies normalize after phase rotation
+exportBtn.addEventListener('click', ()=>{
+  if(!originalData.length) return;
+  const deg = parseFloat(phaseSlider.value);
+  let outs = applyPhaseRotation(originalData, hilbertData, deg);
+  if(singleNormOnEl.checked){
+    const target = getNormTarget(singleNormDbEl);
+    outs = applyNormalize(outs, target);
+  }
+  const wav = encodeWAV(outs, sampleRate);
+  const blob = new Blob([wav],{type:'audio/wav'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=`phase_${phaseSlider.value}deg.wav`; a.click();
+  URL.revokeObjectURL(url);
+});
+
+phaseHackBtn.addEventListener('click', runPhaseHack);
+resizeWave(); resizeIQ(); updatePhase();
+
+// =========================================================
+// BATCH TAB
+// =========================================================
+const batchDropZone = $('batchDropZone');
+const batchFileInput = $('batchFileInput');
+const batchFileList = $('batchFileList');
+const batchRunBtn = $('batchRunBtn');
+const batchClearBtn = $('batchClearBtn');
+const batchProgressWrap = $('batchProgressWrap');
+const batchProgressBar = $('batchProgressBar');
+const batchStatusEl = $('batchStatus');
+const batchNormOnEl = $('batchNormOn');
+const batchNormDbEl = $('batchNormDb');
+
+setupNormDbInput(batchNormDbEl, null, batchNormOnEl, $('batchNormLabel'));
+
+let batchFiles = []; // [{file, statusEl, degEl, nameEl}]
+let batchRunning = false;
+
+// Load JSZip from CDN
+let JSZip = null;
+const jszipStatusEl = $('jszipStatus');
+(function loadJSZip(){
+  jszipStatusEl.textContent = '(JSZip読み込み中...)';
+  const s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+  s.onload = ()=>{ JSZip = window.JSZip; jszipStatusEl.textContent = ''; };
+  s.onerror = ()=>{ jszipStatusEl.textContent = '(JSZip読み込み失敗 – ZIP不可)'; };
+  document.head.appendChild(s);
+})();
+
+// Drop zone
+batchDropZone.addEventListener('click', ()=> batchFileInput.click());
+batchDropZone.addEventListener('dragover', e=>{ e.preventDefault(); batchDropZone.classList.add('drag-over'); });
+batchDropZone.addEventListener('dragleave', ()=> batchDropZone.classList.remove('drag-over'));
+batchDropZone.addEventListener('drop', e=>{
+  e.preventDefault(); batchDropZone.classList.remove('drag-over');
+  addBatchFiles([...e.dataTransfer.files]);
+});
+batchFileInput.addEventListener('change', e=>{ addBatchFiles([...e.target.files]); batchFileInput.value=''; });
+
+function addBatchFiles(files){
+  const audioFiles = files.filter(f => f.type.startsWith('audio/') || /\.(mp3|wav|flac|ogg|aac|m4a|opus|aiff?)$/i.test(f.name));
+  for(const f of audioFiles){
+    // prevent duplicates by name+size
+    if(batchFiles.some(b => b.file.name === f.name && b.file.size === f.size)) continue;
+    const item = document.createElement('div');
+    item.className = 'batch-file-item';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'batch-file-name';
+    nameEl.textContent = f.name;
+    const degEl = document.createElement('span');
+    degEl.className = 'batch-file-deg';
+    degEl.textContent = '';
+    const stEl = document.createElement('span');
+    stEl.className = 'batch-file-status pending';
+    stEl.textContent = '待機';
+    item.appendChild(nameEl); item.appendChild(degEl); item.appendChild(stEl);
+    batchFileList.appendChild(item);
+    batchFiles.push({ file: f, el: item, statusEl: stEl, degEl: degEl });
+  }
+  updateBatchRunBtn();
+}
+
+function updateBatchRunBtn(){
+  batchRunBtn.disabled = batchFiles.length === 0 || batchRunning;
+}
+
+batchClearBtn.addEventListener('click', ()=>{
+  if(batchRunning) return;
+  batchFiles = [];
+  batchFileList.innerHTML = '';
+  batchProgressWrap.style.display = 'none';
+  batchProgressBar.style.width = '0%';
+  batchStatusEl.textContent = '';
+  updateBatchRunBtn();
+});
+
+// Helper: decode audio file using a temporary AudioContext
+async function decodeAudioFile(file){
+  const tmpCtx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:48000});
+  const buf = await file.arrayBuffer();
+  const audio = await tmpCtx.decodeAudioData(buf);
+  await tmpCtx.close();
+  return audio;
+}
+
+batchRunBtn.addEventListener('click', async ()=>{
+  if(batchRunning || batchFiles.length === 0) return;
+  batchRunning = true;
+  batchRunBtn.disabled = true;
+  batchProgressWrap.style.display = 'block';
+
+  // Reset statuses
+  for(const b of batchFiles){
+    b.statusEl.className = 'batch-file-status pending';
+    b.statusEl.textContent = '待機';
+    b.degEl.textContent = '';
+  }
+
+  const zip = JSZip ? new JSZip() : null;
+  let done = 0;
+
+  for(const b of batchFiles){
+    b.statusEl.className = 'batch-file-status processing';
+    b.statusEl.textContent = '処理中';
+    batchStatusEl.textContent = `[${done+1}/${batchFiles.length}] ${b.file.name} を処理中...`;
+    batchProgressBar.style.width = `${(done / batchFiles.length * 100).toFixed(1)}%`;
+
+    try {
+      await new Promise(r => setTimeout(r, 10)); // yield UI
+
+      const audio = await decodeAudioFile(b.file);
+      const sr = audio.sampleRate;
+      const chs = Math.min(2, audio.numberOfChannels);
+      const maxLen = Math.min(audio.length, sr * 300); // batch: up to 5min
+      const origData = [];
+      for(let c=0;c<chs;c++){
+        const d = audio.getChannelData(c);
+        origData.push(new Float32Array(d.subarray(0, maxLen)));
+      }
+
+      // Hilbert
+      const hilbData = [];
+      for(let c=0;c<chs;c++){
+        hilbData.push(hilbert(origData[c]));
+        await new Promise(r => setTimeout(r, 5));
+      }
+
+      // Phase Hack
+      const bestDeg = findPhaseHackAngle(origData[0], hilbData[0]);
+      b.degEl.textContent = bestDeg.toFixed(2) + '°';
+
+      // Apply rotation
+      let outs = applyPhaseRotation(origData, hilbData, bestDeg);
+
+      // Normalize
+      if(batchNormOnEl.checked){
+        const target = getNormTarget(batchNormDbEl);
+        outs = applyNormalize(outs, target);
+      }
+
+      // Encode WAV
+      const wavBuf = encodeWAV(outs, sr);
+
+      if(zip){
+        const baseName = b.file.name.replace(/\.[^.]+$/, '');
+        zip.file(`${baseName}_phasehack.wav`, wavBuf);
+      }
+
+      b.statusEl.className = 'batch-file-status done';
+      b.statusEl.textContent = '完了';
+    } catch(err) {
+      console.error(err);
+      b.statusEl.className = 'batch-file-status error';
+      b.statusEl.textContent = 'エラー';
+      b.degEl.textContent = '';
+    }
+
+    done++;
+    b.el.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  }
+
+  batchProgressBar.style.width = '100%';
+
+  if(zip && done > 0){
+    batchStatusEl.textContent = 'ZIP生成中...';
+    await new Promise(r => setTimeout(r, 10));
+    const blob = await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{level:1} });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `phasehack_batch_${Date.now()}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+    batchStatusEl.textContent = `完了 — ${done}ファイルをZIPでダウンロード`;
+  } else if(!zip){
+    batchStatusEl.textContent = `処理完了（JSZipが読み込まれていないためZIP生成をスキップしました）`;
+  } else {
+    batchStatusEl.textContent = '処理完了（ダウンロードできるファイルがありませんでした）';
+  }
+
+  batchRunning = false;
+  updateBatchRunBtn();
+});
+</script>
+</body>
+</html>
