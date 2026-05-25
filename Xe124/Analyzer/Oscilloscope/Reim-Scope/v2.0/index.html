@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Reim-Scope Zoom</title>
+  <!-- Playables SDK -->
+  <script>// Playables SDK v1.0.0
+    // Game lifecycle bridge: rAF-based game-ready detection + event communication
+    (function () {
+      'use strict';
+
+      // Idempotency: skip if already initialized (e.g., server-side injection
+      // followed by client-side inject-javascript via the Bloks webview component).
+      if (window.playablesSDK) return;
+
+      var HANDLER_NAME = 'playablesGameEventHandler';
+      var ANDROID_BRIDGE_NAME = '_MetaPlayablesBridge';
+      var RAF_FRAME_THRESHOLD = 3;
+
+      var gameReadySent = false;
+      var firstInteractionSent = false;
+      var errorSent = false;
+      var frameCount = 0;
+      var originalRAF = window.requestAnimationFrame;
+
+      // --- Transport Layer ---
+
+      function hasIOSBridge() {
+        return !!(window.webkit &&
+          window.webkit.messageHandlers &&
+          window.webkit.messageHandlers[HANDLER_NAME]);
+      }
+
+      function hasAndroidBridge() {
+        return !!(window[ANDROID_BRIDGE_NAME] &&
+          typeof window[ANDROID_BRIDGE_NAME].postEvent === 'function');
+      }
+
+      function isInIframe() {
+        return !!(window.parent && window.parent !== window);
+      }
+
+      function sendEvent(eventName, payload) {
+        var message = {
+          type: eventName,
+          payload: payload || {},
+          timestamp: Date.now()
+        };
+
+        if (hasIOSBridge()) {
+          try {
+            window.webkit.messageHandlers[HANDLER_NAME].postMessage(message);
+          } catch (e) { /* ignore */ }
+          return;
+        }
+
+        if (hasAndroidBridge()) {
+          try {
+            var p = payload || {};
+            p.__secureToken = window.__fbAndroidBridgeAuthToken || '';
+            p.timestamp = message.timestamp;
+            window[ANDROID_BRIDGE_NAME].postEvent(
+              eventName,
+              JSON.stringify(p)
+            );
+          } catch (e) { /* ignore */ }
+          return;
+        }
+
+        if (isInIframe()) {
+          try {
+            window.parent.postMessage(message, '*');
+          } catch (e) { /* ignore */ }
+          return;
+        }
+      }
+
+      // --- rAF Game-Ready Detection ---
+
+      function onFrame() {
+        if (gameReadySent) return;
+
+        frameCount++;
+        if (frameCount >= RAF_FRAME_THRESHOLD) {
+          gameReadySent = true;
+          sendEvent('game_ready', {
+            frame_count: frameCount,
+            detected_at: Date.now()
+          });
+          return;
+        }
+
+        originalRAF.call(window, onFrame);
+      }
+
+      if (originalRAF) {
+        window.requestAnimationFrame = function (callback) {
+          if (!gameReadySent) {
+            return originalRAF.call(window, function (timestamp) {
+              frameCount++;
+              if (frameCount >= RAF_FRAME_THRESHOLD && !gameReadySent) {
+                gameReadySent = true;
+                sendEvent('game_ready', {
+                  frame_count: frameCount,
+                  detected_at: Date.now()
+                });
+              }
+              callback(timestamp);
+            });
+          }
+          return originalRAF.call(window, callback);
+        };
+      }
+
+      // --- First User Interaction Detection ---
+
+      function setupFirstInteractionDetection() {
+        var events = ['touchstart', 'mousedown', 'keydown'];
+
+        function onFirstInteraction() {
+          if (firstInteractionSent) return;
+          firstInteractionSent = true;
+          sendEvent('user_interaction_start', null);
+
+          for (var i = 0; i < events.length; i++) {
+            document.removeEventListener(events[i], onFirstInteraction, true);
+          }
+        }
+
+        for (var i = 0; i < events.length; i++) {
+          document.addEventListener(events[i], onFirstInteraction, true);
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupFirstInteractionDetection);
+      } else {
+        setupFirstInteractionDetection();
+      }
+
+      // --- Auto Error Capture ---
+
+      window.addEventListener('error', function (event) {
+        if (errorSent) return;
+        errorSent = true;
+        sendEvent('error', {
+          message: event.message || 'Unknown error',
+          source: event.filename || '',
+          lineno: event.lineno || 0,
+          colno: event.colno || 0,
+          auto_captured: true
+        });
+      });
+
+      window.addEventListener('unhandledrejection', function (event) {
+        if (errorSent) return;
+        errorSent = true;
+        var reason = event.reason;
+        sendEvent('error', {
+          message: (reason instanceof Error) ? reason.message : String(reason),
+          type: 'unhandled_promise_rejection',
+          auto_captured: true
+        });
+      });
+
+      // --- Public API ---
+
+      window.playablesSDK = {
+        complete: function (score) {
+          sendEvent('game_ended', {
+            score: score,
+            completed: true
+          });
+        },
+
+        error: function (message) {
+          if (errorSent) return;
+          errorSent = true;
+          sendEvent('error', {
+            message: message || 'Unknown error',
+            auto_captured: false
+          });
+        },
+
+        sendEvent: function (eventName, payload) {
+          if (!eventName || typeof eventName !== 'string') return;
+          sendEvent(eventName, payload);
+        }
+      };
+
+      // Kick off rAF detection in case no game code calls rAF immediately
+      if (originalRAF) {
+        originalRAF.call(window, onFrame);
+      }
+    })();</script>
+  <!-- PLAYABLE_TOUCH_PATCH_V1 -->
+  <script>
+    (function () {
+      if (window.__playableTouchPatchInstalled) return;
+      window.__playableTouchPatchInstalled = true;
+      var origAdd = EventTarget.prototype.addEventListener;
+      var blockedTypes = { touchstart: 1, touchmove: 1, wheel: 1 };
+      EventTarget.prototype.addEventListener = function (type, listener, options) {
+        if (blockedTypes[type]) {
+          if (options === undefined || options === null) {
+            options = { passive: true };
+          } else if (typeof options === 'boolean') {
+            options = { capture: options, passive: true };
+          } else {
+            options = Object.assign({}, options, { passive: true });
+          }
+        }
+        return origAdd.call(this, type, listener, options);
+      };
+    })();
+  </script>
+  <script>window.Intl = window.Intl || {}; Intl.t = function (s) { return (Intl._locale && Intl._locale[s]) || s; };</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Reim-Scope</title>
+  <style>
+    :root {
+      color-scheme: dark
+    }
+
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: #000
+    }
+
+    .legend {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      display: flex;
+      gap: 14px;
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+      font-size: 12px;
+      color: #ddd
+    }
+
+    .legend span {
+      display: flex;
+      align-items: center;
+      gap: 6px
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      box-shadow: 0 0 6px currentColor
+    }
+
+    #ui {
+      position: fixed;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+      background: rgba(15, 15, 22, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 16px;
+      padding: 12px;
+      backdrop-filter: blur(18px) saturate(1.3);
+      -webkit-backdrop-filter: blur(18px) saturate(1.3);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6)
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.08);
+      color: #eaf0ff;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: .15s
+    }
+
+    button:active {
+      transform: scale(.97);
+      background: rgba(255, 255, 255, 0.16)
+    }
+
+    button.primary {
+      background: linear-gradient(180deg, rgba(90, 140, 255, .25), rgba(60, 90, 220, .25));
+      border-color: rgba(120, 160, 255, .45)
+    }
+
+    button:disabled {
+      opacity: .45;
+      cursor: not-allowed
+    }
+
+    label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #cbd5e1;
+      font-size: 13px;
+      user-select: none
+    }
+
+    input[type=range] {
+      width: 120px;
+      accent-color: #7aa2ff
+    }
+
+    #progress {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 100%;
+      margin-bottom: 8px;
+      height: 4px;
+      background: rgba(255, 255, 255, .1);
+      border-radius: 4px;
+      overflow: hidden;
+      display: none
+    }
+
+    #progressBar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #5df, #7aa2ff);
+      transition: width .1s linear
+    }
+
+    #fileInput {
+      display: none
+    }
+
+    @media(max-width:600px) {
+      button {
+        padding: 9px 11px;
+        font-size: 13px
+      }
+
+      input[type=range] {
+        width: 90px
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="scope"></canvas>
+  <div class="legend">
+    <span><i class="dot" style="background:rgb(255,0,0);color:rgb(255,0,0)"></i>20–200Hz</span>
+    <span><i class="dot" style="background:rgb(10,10,255);color:rgb(10,10,255)"></i>200–2000Hz</span>
+    <span><i class="dot" style="background:rgb(0,255,255);color:rgb(0,255,255)"></i>2k–22kHz</span>
+  </div>
+  <div id="ui">
+    <div id="progress">
+      <div id="progressBar"></div>
+    </div>
+    <div class="controls">
+      <input id="fileInput" type="file" accept="audio/*">
+      <button id="fileBtn" class="primary">ファイル選択</button>
+      <button id="micBtn">マイク</button>
+      <button id="sysBtn">システム音声</button>
+      <button id="playBtn" disabled>再生</button>
+      <button id="preBtn" disabled>事前解析</button>
+      <label>感度 <input id="sens" type="range" min="0.3" max="3" step="0.05" value="1.6"></label>
+    </div>
+  </div>
+
+  <script>
+    // ===== 定数 =====
+    const FFT_N = 2048;
+    const LOG2_N = 11;
+    const ZOOM_D = 4;
+    const FFT_LOW = 2048;
+    const Low_Point_Num = 1000;
+    const Mid_Point_Num = Low_Point_Num;
+    const High_Point_Num = Low_Point_Num;
+    const Low_Point_Size = 2.0;
+    const Mid_Point_Size = 1.6;
+    const High_Point_Size = 1.2;
+
+    // ===== グローバル =====
+    let audioCtx, analyser, gainNode, sourceNode, mediaStream;
+    let timeData = new Float32Array(FFT_N);
+    let real = new Float32Array(FFT_N), imag = new Float32Array(FFT_N);
+    let realLow = new Float32Array(FFT_LOW), imagLow = new Float32Array(FFT_LOW);
+    let canvas = document.getElementById('scope');
+    let ctx = canvas.getContext('2d', { alpha: false });
+    let sensitivity = 1.6, mode = 'idle';
+
+    let audioBuffer = null;
+    let isPlaying = false;
+    let startTime = 0, pauseOffset = 0;
+    let preCache = null;
+    let useCache = false;
+    let isPrecomputing = false;
+
+    let fftWorker, workerBusy = false;
+    let workerLow, workerLowBusy = false; // ←追加
+    let lowRing = new Float32Array(FFT_LOW * ZOOM_D);
+    let lowPos = 0;
+
+    function makeWorker(N) {
+      const code = `
+    const N=${N}, L=Math.log2(N);
+    const rev=new Uint32Array(N),c=new Float32Array(N/2),s=new Float32Array(N/2);
+    for(let i=0;i<N;i++){let j=0;for(let k=0;k<L;k++)j=(j<<1)|((i>>k)&1);rev[i]=j;}
+    for(let i=0;i<N/2;i++){const a=-2*Math.PI*i/N;c[i]=Math.cos(a);s[i]=Math.sin(a);}
+    const hann=new Float32Array(N);for(let i=0;i<N;i++)hann[i]=0.5*(1-Math.cos(2*Math.PI*i/(N-1)));
+    function fft(r,i){for(let x=0;x<N;x++){const y=rev[x];if(y>x){[r[x],r[y]]=[r[y],r[x]];[i[x],i[y]]=[i[y],i[x]]}}for(let l=2;l<=N;l<<=1){const h=l>>1,step=N/l;for(let a=0;a<N;a+=l){for(let b=0;b<h;b++){const ur=r[a+b],ui=i[a+b],vr=r[a+b+h],vi=i[a+b+h],k=b*step,wr=c[k],wi=s[k],tr=vr*wr-vi*wi,ti=vr*wi+vi*wr;r[a+b]=ur+tr;i[a+b]=ui+ti;r[a+b+h]=ur-tr;i[a+b+h]=ui-ti;}}}}
+    onmessage=e=>{const t=e.data,r=new Float32Array(N),im=new Float32Array(N);for(let i=0;i<N;i++)r[i]=t[i]*hann[i];fft(r,im);postMessage({r,im},[r.buffer,im.buffer]);}`;
+      return new Worker(URL.createObjectURL(new Blob([code], { type: 'application/javascript' })));
+    }
+
+    function initWorkers() {
+      fftWorker = makeWorker(FFT_N);
+      fftWorker.onmessage = e => { real = e.data.r; imag = e.data.im; workerBusy = false; };
+      workerLow = makeWorker(FFT_LOW);
+      workerLow.onmessage = e => { realLow = e.data.r; imagLow = e.data.im; workerLowBusy = false; };
+    }
+
+    // UI
+    const fileInput = document.getElementById('fileInput');
+    const fileBtn = document.getElementById('fileBtn');
+    const micBtn = document.getElementById('micBtn');
+    const sysBtn = document.getElementById('sysBtn');
+    const playBtn = document.getElementById('playBtn');
+    const preBtn = document.getElementById('preBtn');
+    const sensSlider = document.getElementById('sens');
+    const progress = document.getElementById('progress');
+    const progressBar = document.getElementById('progressBar');
+
+    // ===== 初期化：FFTテーブル事前計算 =====
+    function initFFT() {
+      rev = new Uint32Array(FFT_N);
+      for (let i = 0; i < FFT_N; i++) { let j = 0; for (let k = 0; k < LOG2_N; k++) j = (j << 1) | ((i >> k) & 1); rev[i] = j; }
+      cosTable = new Float32Array(FFT_N / 2);
+      sinTable = new Float32Array(FFT_N / 2);
+      for (let i = 0; i < FFT_N / 2; i++) { const a = -2 * Math.PI * i / FFT_N; cosTable[i] = Math.cos(a); sinTable[i] = Math.sin(a); }
+      hannWindow = new Float32Array(FFT_N);
+      for (let i = 0; i < FFT_N; i++) hannWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (FFT_N - 1)));
+    }
+
+    // ===== 高速FFT（インプレース） =====
+    function fft(re, im) {
+      const n = FFT_N;
+      // ビットリバース
+      for (let i = 0; i < n; i++) { const j = rev[i]; if (j > i) { let tr = re[i]; re[i] = re[j]; re[j] = tr; let ti = im[i]; im[i] = im[j]; im[j] = ti; } }
+      for (let len = 2; len <= n; len <<= 1) {
+        const half = len >> 1, step = n / len;
+        for (let i = 0; i < n; i += len) {
+          for (let j = 0; j < half; j++) {
+            const uR = re[i + j], uI = im[i + j];
+            const vR = re[i + j + half], vI = im[i + j + half];
+            const k = j * step, wr = cosTable[k], wi = sinTable[k];
+            const tR = vR * wr - vI * wi, tI = vR * wi + vI * wr;
+            re[i + j] = uR + tR; im[i + j] = uI + tI;
+            re[i + j + half] = uR - tR; im[i + j + half] = uI - tI;
+          }
+        }
+      }
+    }
+
+    // ===== Audio初期化 =====
+    async function initAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = FFT_N;
+      analyser.smoothingTimeConstant = 0;
+      gainNode = audioCtx.createGain();
+      gainNode.gain.value = 1;
+      analyser.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+    }
+
+    // 共通クリーンアップ
+    function stopCurrent() {
+      if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+      if (sourceNode) { try { sourceNode.disconnect(); } catch { } if (sourceNode.stop) try { sourceNode.stop(); } catch { } }
+      sourceNode = null; isPlaying = false;
+    }
+
+    // ===== マイク開始 =====
+    async function startMic() {
+      try {
+        await initAudio(); await audioCtx.resume();
+        stopCurrent(); useCache = false; mode = 'mic';
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, video: false });
+        mediaStream = stream;
+        sourceNode = audioCtx.createMediaStreamSource(stream);
+        sourceNode.connect(analyser);
+        gainNode.gain.value = 1;
+      } catch (e) { alert('マイクのアクセスが拒否されました'); console.error(e); }
+    }
+
+    // ===== システム音声開始 =====
+    async function startSystem() {
+      try {
+        await initAudio(); await audioCtx.resume();
+        stopCurrent(); useCache = false; mode = 'system';
+        const stream = await navigator.mediaDevices.getDisplayMedia({ audio: { echoCancellation: false }, video: true });
+        if (stream.getAudioTracks().length === 0) { alert('システム音声が取得できませんでした'); return; }
+        stream.getVideoTracks().forEach(t => t.stop());
+        mediaStream = stream;
+        sourceNode = audioCtx.createMediaStreamSource(stream);
+        sourceNode.connect(analyser);
+        gainNode.gain.value = 0;
+      } catch (e) { alert('システム音声の取得に失敗しました'); console.error(e); }
+    }
+
+    // ===== ファイル読み込み =====
+    async function loadFile(file) {
+      if (!file) return;
+      try {
+        await initAudio(); await audioCtx.resume();
+        stopCurrent(); mode = 'file'; useCache = false; preCache = null; pauseOffset = 0;
+        const buf = await file.arrayBuffer();
+        audioBuffer = await audioCtx.decodeAudioData(buf);
+        playBtn.disabled = false; preBtn.disabled = false; playBtn.textContent = '再生';
+        alert('読み込み完了: ' + file.name);
+      } catch (e) { alert('ファイルのデコードに失敗しました'); console.error(e); }
+    }
+
+    // ===== 再生/停止 =====
+    async function togglePlay() {
+      if (mode !== 'file' || !audioBuffer) return;
+      await initAudio(); await audioCtx.resume();
+      if (isPlaying) {
+        try { sourceNode.stop(); } catch { }
+        pauseOffset += audioCtx.currentTime - startTime;
+        isPlaying = false; playBtn.textContent = '再生';
+      } else {
+        sourceNode = audioCtx.createBufferSource();
+        sourceNode.buffer = audioBuffer;
+        sourceNode.connect(analyser);
+        sourceNode.onended = () => { if (isPlaying) { isPlaying = false; pauseOffset = 0; playBtn.textContent = '再生'; } };
+        startTime = audioCtx.currentTime;
+        sourceNode.start(0, pauseOffset);
+        isPlaying = true; playBtn.textContent = '停止';
+      }
+    }
+
+    async function precomputeCache() {
+      if (!audioBuffer || isPrecomputing) return;
+      isPrecomputing = true; preBtn.disabled = true; playBtn.disabled = true;
+      progress.style.display = 'block'; progressBar.style.width = '0%';
+
+      const sr = audioBuffer.sampleRate;
+      const bw = sr / FFT_N;
+      const bwLow = sr / ZOOM_D / FFT_LOW;
+      const bandsDef = [[20, 200, Low_Point_Num], [200, 2000, Mid_Point_Num], [2000, 22050, High_Point_Num]];
+      const points = [];
+      for (let b = 0; b < bandsDef.length; b++) {
+        const [bMin, bMax, cnt] = bandsDef[b];
+        const l0 = Math.log10(bMin), l1 = Math.log10(bMax);
+        for (let i = 0; i < cnt; i++) {
+          const f = Math.pow(10, l0 + (l1 - l0) * i / cnt);
+          const k = Math.max(1, Math.min(Math.round(f / bw), FFT_N / 2 - 1));
+          points.push({ k, f });
+        }
+      }
+      const totalBins = points.length;
+      const hop = Math.max(128, Math.floor(sr / 120));
+      const totalFrames = Math.max(1, Math.floor((audioBuffer.length - FFT_N) / hop));
+      const data = new Int8Array(totalFrames * totalBins * 2);
+      const ch = audioBuffer.getChannelData(0);
+      const tmpR = new Float32Array(FFT_N), tmpI = new Float32Array(FFT_N);
+
+      for (let fr = 0; fr < totalFrames; fr++) {
+        const off = fr * hop;
+        for (let i = 0; i < FFT_N; i++) tmpR[i] = (ch[off + i] || 0) * hannWindow[i];
+        tmpI.fill(0);
+        fft(tmpR, tmpI);
+        const base = fr * totalBins * 2;
+        for (let j = 0; j < totalBins; j++) {
+          const k = points[j].k;
+          let r = tmpR[k] / (FFT_N / 2); r = Math.max(-1, Math.min(1, r));
+          let im = tmpI[k] / (FFT_N / 2); im = Math.max(-1, Math.min(1, im)); data[base + j * 2] = (r * 127) | 0;
+          data[base + j * 2 + 1] = (im * 127) | 0;
+        }
+        if ((fr & 31) === 0) {
+          progressBar.style.width = ((fr / totalFrames) * 100).toFixed(1) + '%';
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+      preCache = { sr, hop, points, totalBins, totalFrames, data, bandsDef };
+      useCache = true;
+      progressBar.style.width = '100%'; setTimeout(() => progress.style.display = 'none', 300);
+      isPrecomputing = false; preBtn.disabled = false; playBtn.disabled = false;
+      alert('事前解析が完了しました');
+    }
+    // ===== リサイズ =====
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+
+    // ===== レンダリング =====
+    function render() {
+      requestAnimationFrame(render);
+      const w = canvas.width, h = canvas.height, cx = w / 2, cy = h / 2;
+      ctx.fillStyle = 'rgba(0,0,0,1)'; ctx.fillRect(0, 0, w, h);
+      // トレイル
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = 'rgba(0,0,0,1)';
+      ctx.fillRect(0, 0, w, h);
+      // グリッド
+      ctx.save(); ctx.translate(cx, cy);
+      ctx.strokeStyle = 'rgba(80,120,200,0.12)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-cx, 0); ctx.lineTo(cx, 0); ctx.moveTo(0, -cy); ctx.lineTo(0, cy); ctx.stroke();
+      for (let r = 70; r < Math.max(w, h); r += 70) { ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke(); }
+      ctx.restore();
+
+      const colors = ['rgb(255,0,0)', 'rgb(10,10,255)', 'rgb(0,255,255)'];
+      const sizes = [Low_Point_Size, Mid_Point_Size, High_Point_Size];
+      const LOG_MIN = Math.log10(20);
+      const LOG_MAX = Math.log10(22050);
+      const maxR = Math.min(w, h) * 0.42;
+
+      // ---- キャッシュ再生 ----
+      if (mode === 'file' && isPlaying && useCache && preCache) {
+        const pc = preCache;
+        const elapsed = audioCtx.currentTime - startTime;
+        let fIdx = Math.floor(elapsed * pc.sr / pc.hop);
+        fIdx = Math.max(0, Math.min(pc.totalFrames - 1, fIdx));
+        const base = fIdx * pc.totalBins * 2;
+        let maxMag = 1e-6;
+        for (let j = 0; j < pc.totalBins; j++) {
+          const r = pc.data[base + j * 2] / 127, im = pc.data[base + j * 2 + 1] / 127;
+          const m = Math.hypot(r, im); if (m > maxMag) maxMag = m;
+        }
+        let idx = 0;
+        for (let b = 0; b < 3; b++) {
+          const [bMin, bMax, cnt] = pc.bandsDef[b];
+          ctx.fillStyle = colors[b]; const sz = sizes[b];
+          const l0 = Math.log10(bMin), l1 = Math.log10(bMax);
+          for (let i = 0; i < cnt; i++, idx++) {
+            const r = pc.data[base + idx * 2] / 127, im = pc.data[base + idx * 2 + 1] / 127;
+            const m = Math.hypot(r, im);
+            const f = pc.points[idx].f;
+            const norm = (Math.log10(f) - LOG_MIN) / (LOG_MAX - LOG_MIN);
+            const baseRadius = 20 + norm * maxR;
+            const angle = Math.atan2(im, r);
+            const radius = baseRadius * (m / maxMag);
+            const x = cx + Math.cos(angle) * radius * sensitivity;
+            const y = cy + Math.sin(angle) * radius * sensitivity;
+            ctx.fillRect(x - sz / 2, y - sz / 2, sz, sz);
+          }
+        }
+        return;
+      }
+
+      // ---- ライブFFT ----
+      if ((mode === 'mic' || mode === 'system') || (mode === 'file' && isPlaying && !useCache)) {
+        if (!analyser) return;
+        analyser.getFloatTimeDomainData(timeData);
+        // 低域Zoom用リングバッファ
+        for (let i = 0; i < timeData.length; i++) {
+          lowRing[lowPos++] = timeData[i];
+          if (lowPos >= lowRing.length) {
+            lowPos = 0;
+            const dec = new Float32Array(FFT_LOW);
+            for (let j = 0; j < FFT_LOW; j++) dec[j] = lowRing[j * ZOOM_D]; // 8倍間引き
+            if (!workerLowBusy) { workerLowBusy = true; workerLow.postMessage(dec); }
+          }
+        }
+        if (!workerBusy) { workerBusy = true; fftWorker.postMessage(timeData); }
+        const sr = audioCtx.sampleRate, bw = sr / FFT_N, bwLow = sr / ZOOM_D / FFT_LOW;
+
+        // 最大値
+        let maxMag = 1e-6;
+
+        // 低域
+        for (let i = 0; i < Low_Point_Num; i++) {
+          const f = Math.pow(10, Math.log10(20) + (Math.log10(200) - Math.log10(20)) * i / Low_Point_Num);
+          const k = Math.max(1, Math.min(Math.round(f / bwLow), FFT_LOW / 2 - 1));
+          maxMag = Math.max(maxMag, Math.hypot(realLow[k], imagLow[k]) / (FFT_LOW / 2));
+        }
+        // 中高域
+        for (const [b0, b1, n] of [[200, 2000, Mid_Point_Num], [2000, 22050, High_Point_Num]]) {
+          const l0 = Math.log10(b0), l1 = Math.log10(b1);
+          for (let i = 0; i < n; i++) {
+            const f = Math.pow(10, l0 + (l1 - l0) * i / n);
+            const k = Math.max(1, Math.min(Math.round(f / bw), FFT_N / 2 - 1));
+            maxMag = Math.max(maxMag, Math.hypot(real[k], imag[k]) / (FFT_N / 2));
+          }
+        }
+
+        // 描画パス
+        const drawBand = (bMin, bMax, color, sz, points, useLow = false) => {
+          ctx.fillStyle = color;
+          const l0 = Math.log10(bMin), l1 = Math.log10(bMax);
+          for (let i = 0; i < points; i++) {
+            const f = Math.pow(10, l0 + (l1 - l0) * i / points);
+            const k = useLow
+              ? Math.max(1, Math.min(Math.round(f / bwLow), FFT_LOW / 2 - 1))
+              : Math.max(1, Math.min(Math.round(f / bw), FFT_N / 2 - 1));
+            const r = useLow ? realLow[k] / (FFT_LOW / 2) : real[k] / (FFT_N / 2);
+            const im = useLow ? imagLow[k] / (FFT_LOW / 2) : imag[k] / (FFT_N / 2);
+            const m = Math.hypot(r, im);
+            const norm = (Math.log10(f) - LOG_MIN) / (LOG_MAX - LOG_MIN);
+            const baseRadius = 20 + norm * maxR;
+            const angle = Math.atan2(im, r);
+            const radius = baseRadius * (m / maxMag) * sensitivity;
+            ctx.fillRect(cx + Math.cos(angle) * radius - sz / 2, cy + Math.sin(angle) * radius - sz / 2, sz, sz);
+          }
+        };
+
+        drawBand(20, 200, colors[0], sizes[0], Low_Point_Num, true);
+        drawBand(200, 2000, colors[1], sizes[1], Mid_Point_Num, false);
+        drawBand(2000, 22050, colors[2], sizes[2], High_Point_Num, false);
+      }
+    }
+
+    // ===== イベント =====
+    fileBtn.onclick = () => fileInput.click();
+    fileInput.onchange = e => loadFile(e.target.files[0]);
+    micBtn.onclick = startMic;
+    sysBtn.onclick = startSystem;
+    playBtn.onclick = togglePlay;
+    preBtn.onclick = precomputeCache;
+    sensSlider.oninput = e => sensitivity = parseFloat(e.target.value);
+
+    // タッチで AudioContext 復帰
+    document.body.addEventListener('touchstart', () => { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }, { passive: true });
+
+    // 起動
+    initFFT(); initWorkers(); resize(); render();
+  </script>
+</body>
+
+</html>

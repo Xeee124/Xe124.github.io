@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KFR Double×SIMD トランジェント計測器</title>
+<style>
+:root{
+  --bg:#0a0c10; --panel:#121721; --line:#1e2633; --txt:#e5eef7; --muted:#8aa0b3; --accent:#7dd3fc; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:linear-gradient(180deg,#070a0f,#0b1320 40%,#0a0c10); color:var(--txt);
+  font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:980px; margin:32px auto; padding:0 16px}
+header{display:flex; align-items:center; gap:12px; margin-bottom:16px}
+h1{font-size:20px; margin:0; letter-spacing:.02em}
+.badge{font-size:11px; color:#0b1320; background:var(--accent); padding:3px 8px; border-radius:999px; font-weight:700}
+.panel{background:rgba(18,23,33,.7); backdrop-filter: blur(8px); border:1px solid var(--line); border-radius:16px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.note{color:var(--muted); font-size:12px; margin:6px 0 0}
+.drop{
+  border:1.5px dashed #2a3a52; border-radius:14px; padding:28px; text-align:center; transition:.2s; cursor:pointer;
+  background:radial-gradient(600px 120px at 50% -20%, rgba(125,211,252,.12), transparent);
+}
+.drop:hover{border-color:var(--accent); background:rgba(125,211,252,.06)}
+.drop.drag{border-color:var(--ok); background:rgba(34,197,94,.08)}
+.drop strong{color:var(--accent)}
+#file{display:none}
+.status{margin-top:10px; font-size:13px; color:var(--muted)}
+.grid{display:grid; grid-template-columns:1.1fr .9fr; gap:16px; margin-top:16px}
+@media(max-width:860px){.grid{grid-template-columns:1fr}}
+table{width:100%; border-collapse:collapse; font-size:14px; overflow:hidden; border-radius:12px; border:1px solid var(--line)}
+th,td{padding:10px 12px; border-bottom:1px solid var(--line)}
+th{background:#0f1521; text-align:left; color:#b7c7d6; font-weight:600; width:38%}
+td{background:#0c111a}
+.mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", monospace; font-variant-numeric: tabular-nums}
+.canvasWrap{border:1px solid var(--line); border-radius:12px; overflow:hidden; background:#070b12}
+canvas{display:block; width:100%; height:220px}
+.legend{display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-top:8px}
+.dot{width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:6px}
+.d10{background:#38bdf8} .d90{background:#22c55e} .dpk{background:#f59e0b}
+.footer{margin-top:10px; font-size:12px; color:#7f91a6}
+.ok{color:var(--ok)} .err{color:var(--err)} .warn{color:var(--warn)}
+.btn{appearance:none; border:1px solid var(--line); background:#0f1521; color:var(--txt); padding:8px 12px; border-radius:10px; font-size:13px; cursor:pointer}
+.btn:hover{border-color:#2c3b52}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>KFR Double×SIMD トランジェント計測器</h1>
+    <span class="badge">research</span>
+  </header>
+
+  <div class="panel">
+    <div id="drop" class="drop" tabindex="0" role="button" aria-label="WAVファイルをドロップ">
+      <div style="font-size:15px; margin-bottom:6px"><strong>WAVをドロップ</strong> またはクリックして選択</div>
+      <div class="note">24-bit / 32-bit float 対応・モノラル第一チャンネルを解析・完全オフライン</div>
+    </div>
+    <input id="file" type="file" accept=".wav,audio/wav,audio/x-wav" />
+    <div class="status" id="status">初期化中…</div>
+    <div class="note">kfr.js / kfr.wasm を同じフォルダに置くと、double×SIMDでFFT実行します</div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <table>
+        <thead><tr><th>項目</th><th>値</th></tr></thead>
+        <tbody>
+          <tr><td>Crest Factor (dB)</td><td class="mono" id="cf">-</td></tr>
+          <tr><td>PLR approx (dB)</td><td class="mono" id="plr">-</td></tr>
+          <tr><td>Rise time 10-90% (ms)</td><td class="mono" id="rise">-</td></tr>
+          <tr><td>Spectral centroid (Hz)</td><td class="mono" id="sc">-</td></tr>
+          <tr><td>ATC – Attack Temporal Centroid (ms)</td><td class="mono" id="atc">-</td></tr>
+          <tr><td>Peak (lin / dBFS)</td><td class="mono" id="peak">-</td></tr>
+          <tr><td>RMS (lin / dBFS)</td><td class="mono" id="rms">-</td></tr>
+          <tr><td>Sample Rate / Length</td><td class="mono" id="meta">-</td></tr>
+        </tbody>
+      </table>
+      <div class="footer" id="fftinfo">FFT: 未実行</div>
+    </div>
+
+    <div class="panel">
+      <div class="canvasWrap"><canvas id="wave" width="1200" height="260"></canvas></div>
+      <div class="legend">
+        <span><i class="dot d10"></i>10% 交差</span>
+        <span><i class="dot d90"></i>90% 交差</span>
+        <span><i class="dot dpk"></i>最初のピーク</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+/* ===== KFR初期化（ESM）===== */
+let kfr = null;
+const statusEl = document.getElementById('status');
+const fftinfo = document.getElementById('fftinfo');
+
+async function initKFR(){
+  try{
+    statusEl.innerHTML = 'KFRモジュール確認中…';
+    // 実運用では以下の2行を有効化してください
+    // const mod = await import('./kfr.js');
+    // kfr = await mod.default();
+    
+    // デモ環境ではKFR未配置のため時間領域のみ動作
+    kfr = null;
+    
+    if(kfr && kfr._malloc){
+      statusEl.innerHTML = '<span class="ok">準備完了</span> – WAVをドロップしてください';
+      fftinfo.textContent = 'FFT: KFR double×SIMD 待機中';
+    }else{
+      statusEl.innerHTML = '<span class="ok">準備完了</span> – WAVをドロップしてください';
+      fftinfo.textContent = 'FFT: 未実行 (kfr.jsを配置すると有効)';
+    }
+  }catch(e){
+    statusEl.innerHTML = '<span class="err">kfr.js / kfr.wasm を読み込めません</span> – 同じフォルダに配置してください';
+    fftinfo.textContent = 'FFT: 無効（KFR未初期化）';
+  }
+}
+initKFR();
+
+/* ===== UI配線 ===== */
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('file');
+drop.addEventListener('click', ()=> fileInput.click());
+drop.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); fileInput.click(); }});
+['dragenter','dragover'].forEach(ev=> drop.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev=> drop.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.remove('drag'); }));
+drop.addEventListener('drop', e=>{ const f = e.dataTransfer.files?.[0]; if(f) handleFile(f); });
+fileInput.addEventListener('change', e=>{ const f = e.target.files?.[0]; if(f) handleFile(f); });
+
+/* ===== 解析本体 ===== */
+async function handleFile(file){
+  try{
+    statusEl.textContent = `読み込み中: ${file.name}`;
+    const buf = await file.arrayBuffer();
+
+    const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const audio = await tempCtx.decodeAudioData(buf);
+    tempCtx.close();
+
+    const sr = audio.sampleRate;
+    const ch0 = audio.getChannelData(0);
+    const x = new Float64Array(ch0.length);
+    for(let i=0;i<ch0.length;i++) x[i] = ch0[i];
+
+    const result = analyzeTimeDomain(x, sr);
+    drawWaveform(x, sr, result.peakIdx, result.t10, result.t90);
+
+    let sc = NaN;
+    try{
+      if(kfr){
+        sc = await spectralCentroidKFR(x, sr, result.peakIdx);
+        fftinfo.textContent = `FFT: KFR double×SIMD 実行 (N=${result.fftN})`;
+      }else{
+        fftinfo.textContent = 'FFT: スキップ (kfr.js未配置)';
+      }
+    }catch(e){
+      fftinfo.innerHTML = `<span class="warn">FFT失敗</span>`;
+    }
+
+    setText('cf',  finite(result.cf) ? result.cf.toFixed(3) : '-');
+    setText('plr', finite(result.plr) ? result.plr.toFixed(3) : '-');
+    setText('rise',finite(result.riseMs) ? result.riseMs.toFixed(3) : '-');
+    setText('sc',  finite(sc) ? sc.toFixed(2) : '-');
+    setText('atc', finite(result.atcMs) ? result.atcMs.toFixed(3) : '-');
+    setText('peak', `${result.peak.toExponential(6)} / ${result.peakDb.toFixed(3)} dB`);
+    setText('rms',  `${result.rms.toExponential(6)} / ${result.rmsDb.toFixed(3)} dB`);
+    setText('meta', `${sr} Hz / ${x.length.toLocaleString()} samples`);
+
+    statusEl.innerHTML = `<span class="ok">完了</span> – ${file.name}`;
+  }catch(err){
+    statusEl.innerHTML = `<span class="err">エラー:</span> ${err.message || err}`;
+  }
+}
+
+function setText(id, v){ document.getElementById(id).textContent = v; }
+const finite = (v)=> Number.isFinite(v);
+
+/* ——— 時間領域メトリクス（すべてFloat64で計算） ——— */
+function analyzeTimeDomain(x, sr){
+  const N = x.length;
+  let peak = 0, peakIdx = 0;
+  for(let i=0;i<N;i++){
+    const a = Math.abs(x[i]);
+    if(a>peak){ peak=a; peakIdx=i; }
+  }
+  let sumsq = 0;
+  for(let i=0;i<N;i++){ const v=x[i]; sumsq += v*v; }
+  const rms = Math.sqrt(sumsq / Math.max(1,N));
+
+  const eps = 1e-300;
+  const peakDb = 20*Math.log10(peak+eps);
+  const rmsDb  = 20*Math.log10(rms+eps);
+  const cf = 20*Math.log10((peak+eps)/(rms+eps));
+  const plr = peakDb - rmsDb;
+
+  const th10 = 0.1*peak, th90 = 0.9*peak;
+  let t10 = NaN, t90 = NaN;
+  for(let i=1;i<=peakIdx;i++){
+    const a0 = Math.abs(x[i-1]), a1 = Math.abs(x[i]);
+    if(!Number.isFinite(t10) && a0 < th10 && a1 >= th10){
+      t10 = (i-1) + (th10 - a0)/Math.max(a1-a0, eps);
+    }
+    if(a0 < th90 && a1 >= th90){
+      t90 = (i-1) + (th90 - a0)/Math.max(a1-a0, eps);
+      break;
+    }
+  }
+  const riseMs = (Number.isFinite(t10)&&Number.isFinite(t90)) ? (t90 - t10)/sr*1000 : NaN;
+
+  let atcMs = NaN;
+  if(Number.isFinite(t10) && Number.isFinite(t90)){
+    const i0 = Math.max(0, Math.floor(t10));
+    const i1 = Math.min(peakIdx, Math.floor(t90));
+    let sumA2=0, sumTA2=0;
+    for(let i=i0;i<=i1;i++){
+      const a = Math.abs(x[i]); const a2 = a*a;
+      const t = (i - t10)/sr;
+      sumA2 += a2; sumTA2 += t*a2;
+    }
+    atcMs = sumA2>0 ? (sumTA2/sumA2*1000) : NaN;
+  }
+
+  let fftN = 1; const minN = 65536;
+  while(fftN < minN) fftN <<= 1;
+  while(fftN < Math.min(x.length, 262144)) fftN <<= 1;
+  fftN = Math.min(fftN, 262144);
+
+  return {peak, peakIdx, rms, peakDb, rmsDb, cf, plr, t10, t90, riseMs, atcMs, fftN};
+}
+
+/* ——— KFR FFTでスペクトル重心 ——— */
+async function spectralCentroidKFR(x, sr, peakIdx){
+  if(!kfr) throw new Error('KFR未初期化');
+  let N = 1; while(N < 65536) N <<= 1;
+  while(N < Math.min(x.length, 262144)) N <<= 1;
+  N = Math.min(N, 262144);
+
+  const half = N>>>1;
+  let start = Math.max(0, peakIdx - half);
+  if(start + N > x.length) start = Math.max(0, x.length - N);
+
+  const seg = new Float64Array(N);
+  const twoPiDiv = 2*Math.PI/(N-1);
+  for(let i=0;i<N;i++){
+    const s = (start+i < x.length) ? x[start+i] : 0;
+    const w = 0.5 * (1 - Math.cos(twoPiDiv*i));
+    seg[i] = s * w;
+  }
+
+  if(typeof kfr._fft_create !== 'function' || typeof kfr._fft_run !== 'function'){
+    throw new Error('_fft_create/_fft_run が見つかりません');
+  }
+  const plan = kfr._fft_create(N);
+  const inPtr  = kfr._malloc(N * 8);
+  const outPtr = kfr._malloc(N * 16);
+  try{
+    kfr.HEAPF64.set(seg, inPtr/8);
+    kfr._fft_run(plan, inPtr, outPtr);
+
+    const out = new Float64Array(kfr.HEAPF64.buffer, outPtr, N*2);
+    let sumP=0, sumFP=0;
+    const df = sr / N;
+    const halfN = N>>>1;
+    for(let k=0;k<=halfN;k++){
+      const re = out[2*k], im = out[2*k+1];
+      const p = re*re + im*im;
+      sumP += p;
+      sumFP += (k*df) * p;
+    }
+    return sumP>0 ? (sumFP/sumP) : 0;
+  }finally{
+    kfr._free(inPtr); kfr._free(outPtr);
+    if(typeof kfr._fft_destroy === 'function'){ try{ kfr._fft_destroy(plan); }catch{} }
+  }
+}
+
+/* ——— 波形描画 ——— */
+function drawWaveform(x, sr, peakIdx, t10, t90){
+  const canvas = document.getElementById('wave');
+  const ctx = canvas.getContext('2d');
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const W = canvas.clientWidth * dpr;
+  const H = canvas.clientHeight * dpr;
+  if(canvas.width !== W) canvas.width = W;
+  if(canvas.height !== H) canvas.height = H;
+  ctx.clearRect(0,0,W,H);
+
+  ctx.strokeStyle = '#162233'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for(let i=1;i<4;i++){ const y = H*i/4; ctx.moveTo(0,y); ctx.lineTo(W,y); }
+  ctx.stroke();
+
+  const step = Math.max(1, Math.floor(x.length / W));
+  ctx.strokeStyle = '#9ecfff'; ctx.lineWidth = 1.2; ctx.beginPath();
+  for(let px=0; px<W; px++){
+    const i0 = px*step;
+    let min=1, max=-1;
+    const i1 = Math.min(i0+step, x.length);
+    for(let i=i0;i<i1;i++){ const v=x[i]; if(v<min)min=v; if(v>max)max=v; }
+    const y1 = (1 - (max*0.5+0.5)) * H;
+    const y2 = (1 - (min*0.5+0.5)) * H;
+    if(px===0){ ctx.moveTo(px, y1); } else { ctx.lineTo(px, y1); }
+    ctx.moveTo(px, y1); ctx.lineTo(px, y2);
+  }
+  ctx.stroke();
+
+  function vline(sample, color){
+    if(!Number.isFinite(sample)) return;
+    const xpx = Math.max(0, Math.min(W-1, sample / x.length * W));
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(xpx,0); ctx.lineTo(xpx,H); ctx.stroke();
+  }
+  vline(t10, '#38bdf8');
+  vline(t90, '#22c55e');
+  vline(peakIdx, '#f59e0b');
+
+  ctx.strokeStyle = '#2a3a52'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
+}
+</script>
+</body>
+</html>

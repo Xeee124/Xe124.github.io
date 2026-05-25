@@ -1,0 +1,85 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Delta — A/B Comparator</title>
+<link rel="stylesheet" href="./Delta.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="header-inner">
+      <h1>Delta — A/B Comparator <span class="mono" style="color:#7dd3fc;font-size:12px">v6</span></h1>
+      <div class="mode-switch" aria-label="mode switch">
+        <button class="mode-btn active" data-mode="auto">自動判定</button>
+        <button class="mode-btn" data-mode="strict">同SR前提</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid grid-3">
+      <section class="card">
+        <h2>音源</h2>
+        <div class="file-row">
+          <div class="file-label">A (基準)</div>
+          <div class="file-input">
+            <input type="file" id="fileA" accept="audio/*" />
+            <div class="file-btn"><span>ファイルを選択</span><span class="file-name" id="nameA">未選択</span></div>
+          </div>
+        </div>
+        <div class="file-row" style="margin-top:10px">
+          <div class="file-label">B (比較)</div>
+          <div class="file-input">
+            <input type="file" id="fileB" accept="audio/*" />
+            <div class="file-btn"><span>ファイルを選択</span><span class="file-name" id="nameB">未選択</span></div>
+          </div>
+        </div>
+        <button class="mode-btn" id="analyze" style="margin-top:12px;width:100%;border-radius:12px;background:#7c3aed;color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)">解析実行</button>
+        <div class="status" id="status"></div>
+      </section>
+
+      <section class="card">
+        <h2>サマリー</h2>
+        <div class="summary" id="summary"></div>
+      </section>
+
+      <section class="card">
+        <h2>評価方針</h2>
+        <div style="font-size:13px;line-height:1.8;color:#cbd5e1">
+          同サンプルならそのまま比較。<br>
+          サンプル不一致なら高品質リサンプル→整列→比較。<br>
+          長さ不一致は overlap / trim で処理。<br>
+          指標は振幅・周波数・位相・時間・知覚・その他に分割。
+        </div>
+      </section>
+    </div>
+
+    <section class="card wave-wrap">
+      <h2>波形オーバーレイ</h2>
+      <canvas id="waveform"></canvas>
+      <div class="legend">
+        <span><i class="dot" style="background:#38bdf8"></i>A</span>
+        <span><i class="dot" style="background:#f59e0b"></i>B</span>
+      </div>
+    </section>
+
+    <div id="categories" class="grid"></div>
+
+    <section class="card">
+      <h2>差分試聴 / ダウンロード</h2>
+      <div id="audioOut"></div>
+    </section>
+  </main>
+
+  <footer>Delta / local-only / split files</footer>
+</div>
+
+<script type="module" src="./Delta_ui.js"></script>
+</body>
+</html>
