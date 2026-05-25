@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wavetable 1024</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Wavetable 1024</h1>
+    <p class="desc">
+      Vital方式：1024本の倍音を奥行き方向に滑らかにランダム移動。レイヤーは上から順に適用され、各層で「ランダム」を選ぶと実行時に候補から1つ割り当てます。再生ボタンで生成した音源をそのまま再生できます。
+    </p>
+
+    <div class="panel">
+      <div class="controls">
+        <label>候補数 <input id="count"   type="number" min="1" max="20" value="10"></label>
+        <label>秒数   <input id="seconds" type="number" min="1" max="10" value="5"></label>
+        <label>サンプルレート
+          <select id="sr">
+            <option value="48000" selected>48000</option>
+            <option value="44100">44100</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="layers-wrap">
+        <div class="layers-head">
+          <div class="layers-title">Base（1枚目レイヤーのエフェクト指定）</div>
+          <div class="layers-note">ランダムにすると毎回変わります</div>
+        </div>
+
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:#12121a;border:1px solid #242436;border-radius:14px;margin-bottom:6px;">
+          <span style="font-size:12px;color:#a78bfa;font-weight:700;min-width:74px;">Core</span>
+          <select id="coreType" style="min-width:180px;flex:1 1 180px;"></select>
+        </div>
+
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:#12121a;border:1px solid #242436;border-radius:14px;margin-bottom:10px;">
+          <span style="font-size:12px;color:#a78bfa;font-weight:700;min-width:74px;">Base</span>
+          <label for="baseEffect">基本効果</label>
+          <select id="baseEffect" style="min-width:180px;flex:1 1 180px;"></select>
+        </div>
+
+        <div class="layers-head">
+          <div class="layers-title">生成レイヤー</div>
+          <div class="layers-note">上の層から下の層へ、順番に反映します。</div>
+        </div>
+        <div id="layerList" class="layer-list"></div>
+
+        <div class="button-row">
+          <button id="addLayer" type="button">レイヤー追加</button>
+          <button id="generate" type="button">生成</button>
+        </div>
+
+        <div class="layers-head" style="margin-top:14px;">
+          <div class="layers-title">音声ファイルからWaveTable生成</div>
+          <div class="layers-note">読み込んだ音声にレイヤーエフェクトを適用して生成します</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:#12121a;border:1px solid #242436;border-radius:14px;margin-top:6px;">
+          <input id="audioFileInput" type="file" accept="audio/*" style="flex:1;color:#d4d4d8;font-size:13px;">
+          <button id="generateFromFile" type="button" style="min-width:120px;">ファイルから生成</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="grid"></main>
+
+  <!--
+  =====================================================================
+  カセット管理の手順
+  ─────────────────────────────────────────────────────────────────────
+  【コアを追加する】
+    1. js/cores/core-mycore.js を同形式(IIFE)で作成し window.WT.CORES['mycore'] = {...} を登録
+    2. js/cores/CORES.json の配列末尾に "mycore" を追記
+    → ブラウザリロードで Core プルダウンに自動反映
+
+  【コアを削除する】
+    1. js/cores/CORES.json から該当名を削除（JSファイルは残しても可）
+    → リロードで選択肢から消える
+
+  【エフェクトを追加する】
+    1. js/effects/fx-myeffect.js を同形式(IIFE)で作成し window.WT.EFFECTS['myeffect'] = {...} を登録
+    2. js/effects/EFFECTS.json の配列に "myeffect" を追記
+    → リロードで全プルダウンに自動反映
+
+  【エフェクトを削除する】
+    1. js/effects/EFFECTS.json から該当名を削除
+    → リロードで選択肢から消える
+
+  ※ 必ずローカルサーバー経由で開くこと（file:// は fetch が CORS でブロックされます）
+     例: python3 -m http.server 8080  →  http://localhost:8080
+  =====================================================================
+  -->
+  <script src="js/loader.js"></script>
+</body>
+</html>

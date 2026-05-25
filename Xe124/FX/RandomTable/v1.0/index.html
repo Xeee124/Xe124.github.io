@@ -1,0 +1,1634 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wavetable 1024</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #0b0b0f;
+    color: #e5e7eb;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header { padding: 32px 16px 8px; text-align: center; }
+  h1 {
+    margin: 0 0 10px;
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: .02em;
+    color: #d8b4fe;
+    text-shadow: 0 0 20px rgba(168,85,247,.15);
+  }
+  .desc {
+    color: #a1a1aa;
+    font-size: 14px;
+    line-height: 1.7;
+    max-width: 900px;
+    margin: 0 auto 18px;
+  }
+  .panel {
+    max-width: 1140px;
+    margin: 0 auto 10px;
+    padding: 14px;
+    background: #111118;
+    border: 1px solid #232331;
+    border-radius: 18px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.28);
+  }
+  .controls {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    margin: 0 auto 12px;
+  }
+  .controls label {
+    display: flex; align-items: center; gap: 8px;
+    background: #13131b;
+    border: 1px solid #23232f;
+    padding: 9px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    color: #d4d4d8;
+  }
+  input[type="number"], select {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #fafafa;
+    width: 76px;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+  select { width: auto; min-width: 140px; }
+  .button-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    margin-top: 6px;
+  }
+  #generate, #addLayer {
+    border: none;
+    padding: 10px 18px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    transition: transform .08s ease, opacity .2s;
+  }
+  #generate {
+    background: linear-gradient(180deg, #9333ea, #7c3aed);
+    color: white;
+    box-shadow: 0 6px 20px rgba(124,58,237,.28);
+  }
+  #addLayer {
+    background: #181822;
+    color: #ddd6fe;
+    border: 1px solid #2a2a3d;
+  }
+  #generate:hover, #addLayer:hover { transform: translateY(-1px); }
+  #generate:disabled { opacity: .55; cursor: default; transform: none; }
+  .layers-wrap {
+    margin-top: 6px;
+    display: grid;
+    gap: 10px;
+  }
+  .layers-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 0 4px 4px;
+  }
+  .layers-title {
+    font-size: 13px;
+    color: #c4b5fd;
+    letter-spacing: .02em;
+  }
+  .layers-note {
+    font-size: 12px;
+    color: #818191;
+  }
+  .layer-list {
+    display: grid;
+    gap: 10px;
+  }
+  .layer-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    background: #12121a;
+    border: 1px solid #242436;
+    border-radius: 14px;
+  }
+  .layer-tag {
+    min-width: 74px;
+    font-size: 12px;
+    color: #a78bfa;
+    font-weight: 700;
+    letter-spacing: .02em;
+  }
+  .layer-row select {
+    min-width: 180px;
+    flex: 1 1 180px;
+    padding-right: 6px;
+  }
+  .remove-layer {
+    border: 1px solid #37374f;
+    background: #181822;
+    color: #d4d4d8;
+    border-radius: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+  .remove-layer:hover { background: #20202d; }
+  .layer-param-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; width:100%; margin-top:6px; }
+  .layer-param-label { font-size:12px; color:#a78bfa; min-width:38px; }
+  .layer-param-readout { font-size:12px; color:#d4d4d8; min-width:40px; text-align:right; }
+  input[type="range"].layer-range { flex:1; min-width:80px; accent-color:#8b5cf6; }
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 18px;
+    padding: 20px;
+    max-width: 1440px;
+    margin: 0 auto 60px;
+  }
+  .card {
+    background: #12121a;
+    border: 1px solid #1e1e2a;
+    border-radius: 18px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.35);
+  }
+  .card h3 {
+    margin: 2px 4px 0;
+    font-size: 14px;
+    font-weight: 650;
+    color: #e9d5ff;
+    letter-spacing: .02em;
+  }
+  canvas.preview {
+    width: 100%;
+    aspect-ratio: 2 / 1;
+    background: #0b0b0f;
+    border: 1px solid #1b1b25;
+    border-radius: 12px;
+    display: block;
+  }
+  canvas.spectrum {
+    width: 100%;
+    height: 46px;
+    background: #06060a;
+    border: 1px solid #171722;
+    border-radius: 8px;
+    display: block;
+    image-rendering: pixelated;
+  }
+  .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .actions button {
+    flex: 1;
+    background: #181822;
+    border: 1px solid #272738;
+    color: #d4d4d8;
+    padding: 8px 10px;
+    border-radius: 10px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  .actions button:hover { background: #21212e; border-color: #3a3a52; }
+  .actions button.active {
+    background: #7c3aed;
+    border-color: #8b5cf6;
+    color: white;
+  }
+  .meta {
+    font-size: 11px;
+    color: #71717a;
+    text-align: right;
+    margin: -2px 4px 0;
+    line-height: 1.45;
+  }
+  @media (max-width: 480px) {
+    h1 { font-size: 26px; }
+    .controls label { padding: 8px 10px; }
+    .layer-row { align-items: stretch; }
+    .layer-tag { min-width: auto; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Wavetable 1024</h1>
+  <p class="desc">Vital方式：1024本の倍音を奥行き方向に滑らかにランダム移動。レイヤーは上から順に適用され、各層で「ランダム」を選ぶと実行時に候補から1つ割り当てます。プレビューは110Hz(A2)固定。</p>
+
+  <div class="panel">
+    <div class="controls">
+      <label>候補数 <input id="count" type="number" min="1" max="20" value="10"></label>
+      <label>秒数 <input id="seconds" type="number" min="1" max="10" value="5"></label>
+      <label>サンプルレート
+        <select id="sr">
+          <option value="48000" selected>48000</option>
+          <option value="44100">44100</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="layers-wrap">
+      <div class="layers-head">
+        <div class="layers-title">Base（1枚目レイヤーのエフェクト指定）</div>
+        <div class="layers-note">ランダムにすると毎回変わります</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:#12121a;border:1px solid #242436;border-radius:14px;margin-bottom:6px;">
+        <span style="font-size:12px;color:#a78bfa;font-weight:700;min-width:74px;">Core</span>
+        <select id="coreType" style="min-width:180px;flex:1 1 180px;">
+          <option value="metaai">MetaAI（オリジナルランダム）</option>
+          <option value="ring">Ring（おでこシワ系うねうね混在）</option>
+          <option value="mountain">Mountain（ギザギザ＋大小うねうね）</option>
+          <option value="acid">Acid（共振フィルタ掃引系）</option>
+          <option value="cathedral">Cathedral（倍音が深く広い残響系）</option>
+          <option value="prism">Prism（高域に向かって密になる虹彩系）</option>
+          <option value="fractal">Fractal（自己相似的なスケール構造）</option>
+          <option value="tension">Tension（不協和音程の引き伸ばし系）</option>
+          <option value="pulse">Pulse（短周期パルス列系）</option>
+        </select>
+      </div>
+      <div id="baseLayerWrap" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:#12121a;border:1px solid #242436;border-radius:14px;margin-bottom:10px;">
+        <span style="font-size:12px;color:#a78bfa;font-weight:700;min-width:74px;">Base</span>
+        <select id="baseEffect" style="min-width:180px;flex:1 1 180px;"></select>
+      </div>
+      <div class="layers-head">
+        <div class="layers-title">生成レイヤー</div>
+        <div class="layers-note">上の層から下の層へ、順番に反映します。</div>
+      </div>
+      <div id="layerList" class="layer-list"></div>
+      <div class="button-row">
+        <button id="addLayer" type="button">レイヤー追加</button>
+        <button id="generate" type="button">生成</button>
+      </div>
+      <div class="layers-head" style="margin-top:14px;">
+        <div class="layers-title">音声ファイルからWaveTable生成</div>
+        <div class="layers-note">読み込んだ音声にレイヤーエフェクトを適用して生成します</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:#12121a;border:1px solid #242436;border-radius:14px;margin-top:6px;">
+        <input id="audioFileInput" type="file" accept="audio/*" style="flex:1;color:#d4d4d8;font-size:13px;">
+        <button id="generateFromFile" type="button" style="min-width:120px;">ファイルから生成</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main id="grid"></main>
+
+<script>
+const N = 2048;
+const BIN_MAX = 1024;
+const TAU = Math.PI * 2;
+const MAX_LAYERS = 20;
+let audioCtx = null;
+let activePlayback = null;
+
+const EFFECTS = [
+  { value: 'random', label: 'ランダム' },
+  { value: 'clean', label: 'Clean（エフェクトなし）' },
+  { value: 'warm', label: 'Warm' },
+  { value: 'bright', label: 'Bright' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'metallic', label: 'Metallic' },
+  { value: 'formant', label: 'Formant' },
+  { value: 'sparse', label: 'Sparse' },
+  { value: 'dense', label: 'Dense' },
+  { value: 'noisy', label: 'Noisy' },
+  { value: 'fm', label: 'FM-ish' },
+  { value: 'liquid', label: 'Liquid' },
+  { value: 'glass', label: 'Glass' },
+  { value: 'vowel', label: 'Vowel' },
+  { value: 'breathy', label: 'Breathy' },
+  { value: 'hollow', label: 'Hollow' },
+  { value: 'buzz', label: 'Buzz' },
+  { value: 'grainy', label: 'Grainy' },
+  { value: 'broken', label: 'Broken' },
+  { value: 'robot', label: 'Robot' },
+  { value: 'inharmonic', label: 'Inharmonic' },
+  { value: 'phase-sweep', label: 'Phase Sweep' },
+  { value: 'phase-walk', label: 'Phase Walk' },
+  { value: 'phase-flip', label: 'Phase Flip' },
+  { value: 'time-skew', label: 'TimeSkew' },
+  { value: 'time-warp', label: 'Time Warp' },
+  { value: 'time-reverse', label: 'Time Reverse' },
+  { value: 'time-pingpong', label: 'Ping-Pong' },
+  { value: 'time-jitter', label: 'Time Jitter' },
+  { value: 'time-hold', label: 'Time Hold' },
+  { value: 'time-jump', label: 'Time Jump' },
+  { value: 'frequency-skew', label: 'FrequencySkew' },
+  { value: 'spectral-warp', label: 'Spectral Warp' },
+  { value: 'spectral-blur', label: 'Spectral Blur' },
+  { value: 'spectral-sharpen', label: 'Spectral Sharpen' },
+  { value: 'spectral-freeze', label: 'Spectral Freeze' },
+  { value: 'spectral-smear', label: 'Spectral Smear' },
+  { value: 'spectral-fold', label: 'Spectral Fold' },
+  { value: 'spectral-quantize', label: 'Spectral Quantize' },
+  { value: 'spectral-scatter', label: 'Spectral Scatter' },
+  { value: 'comb-mask', label: 'Comb Mask' },
+  { value: 'mirror-spectrum', label: 'Mirror Spectrum' },
+  { value: 'magnitude-smooth', label: 'Magnitude Smooth' },
+  { value: 'magnitude-tilt', label: 'Magnitude Tilt' },
+  { value: 'phase-align', label: 'Phase Align' },
+  { value: 'phase-smooth', label: 'Phase Smooth' },
+  { value: 'phase-rotate', label: 'Phase Rotate' },
+  { value: 'phase-drift', label: 'Phase Drift' },
+  { value: 'phase-wrap', label: 'Phase Wrap' },
+  { value: 'phase-randomize', label: 'Phase Randomize' },
+  { value: 'phase-lock', label: 'Phase Lock' },
+  { value: 'phase-spread', label: 'Phase Spread' },
+  { value: 'phase-chase', label: 'Phase Chase' },
+  { value: 'partial-shuffle', label: 'Partial Shuffle' },
+  { value: 'partial-remap', label: 'Partial Remap' },
+  { value: 'odd-even-split', label: 'Odd/Even Split' },
+  { value: 'band-split', label: 'Band Split' },
+  { value: 'formant-shift', label: 'Formant Shift' },
+  { value: 'formant-lock', label: 'Formant Lock' },
+  { value: 'harmonic-boost', label: 'Harmonic Boost' },
+  { value: 'harmonic-cut', label: 'Harmonic Cut' },
+  { value: 'harmonic-hole', label: 'Harmonic Hole' },
+  { value: 'harmonic-fill', label: 'Harmonic Fill' }
+];
+
+const EFFECT_KEYS = EFFECTS.map(x => x.value);
+const EFFECT_LABELS = Object.fromEntries(EFFECTS.map(x => [x.value, x.label]));
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function rand(min = 0, max = 1) { return min + Math.random() * (max - min); }
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function clamp01(v) { return clamp(v, 0, 1); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function smoothstep(t) { return t * t * (3 - 2 * t); }
+function choice(arr) { return arr[(Math.random() * arr.length) | 0]; }
+
+function fft(re, im, invert = false) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      [re[i], re[j]] = [re[j], re[i]];
+      [im[i], im[j]] = [im[j], im[i]];
+    }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = 2 * Math.PI / len * (invert ? -1 : 1);
+    const wlenRe = Math.cos(ang);
+    const wlenIm = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let wRe = 1, wIm = 0;
+      for (let j = 0; j < len / 2; j++) {
+        const uRe = re[i + j], uIm = im[i + j];
+        const vRe = re[i + j + len/2] * wRe - im[i + j + len/2] * wIm;
+        const vIm = re[i + j + len/2] * wIm + im[i + j + len/2] * wRe;
+        re[i + j] = uRe + vRe; im[i + j] = uIm + vIm;
+        re[i + j + len/2] = uRe - vRe; im[i + j + len/2] = uIm - vIm;
+        const nwRe = wRe * wlenRe - wIm * wlenIm;
+        wIm = wRe * wlenIm + wIm * wlenRe; wRe = nwRe;
+      }
+    }
+  }
+  if (invert) {
+    const inv = 1 / n;
+    for (let i = 0; i < n; i++) { re[i] *= inv; im[i] *= inv; }
+  }
+}
+
+function hash01(x) { const s = Math.sin(x) * 43758.5453123; return s - Math.floor(s); }
+function wrapPhase(p) { p %= TAU; return p < -Math.PI ? p + TAU : p > Math.PI ? p - TAU : p; }
+function phaseLerp(a, b, t) { const d = Math.atan2(Math.sin(b - a), Math.cos(b - a)); return a + d * t; }
+function cloneFrame(src) { return { amp: new Float64Array(src.amp), phase: new Float64Array(src.phase) }; }
+function blankFrame() { return { amp: new Float64Array(BIN_MAX + 1), phase: new Float64Array(BIN_MAX + 1) }; }
+
+function blendFrames(a, b, t) {
+  const out = blankFrame();
+  for (let k = 1; k <= BIN_MAX; k++) {
+    out.amp[k] = lerp(a.amp[k], b.amp[k], t);
+    out.phase[k] = phaseLerp(a.phase[k], b.phase[k], t);
+  }
+  return out;
+}
+
+// ─── Core生成関数群 ────────────────────────────────────────────
+
+// MetaAI: 元のオリジナルランダム生成（変更なし）
+function coreMetaAI(pos) {
+  const f = blankFrame();
+  for (let k = 1; k <= BIN_MAX; k++) {
+    const r1 = Math.random(), r2 = Math.random(), r3 = Math.random();
+    const x = k / BIN_MAX;
+    const falloff = 0.55 + 0.75 * Math.pow(1 - x, 1.5);
+    const grain = 0.65 + 0.35 * r2;
+    f.amp[k] = Math.pow(r1, 1.55) * falloff * grain;
+    f.phase[k] = r2 * TAU + Math.sin(pos * 0.15 + k * 0.01 + r3 * TAU) * 0.12;
+  }
+  return f;
+}
+
+// Ring: 小さいうねうねと大きいうねうねが混在するリング変調系
+// 低域はしっかり変化し、全体に複数周期のサイン的エンベロープが重なる
+function coreRing(pos) {
+  const f = blankFrame();
+  // 大うねり: 3〜7周期の低周波エンベロープ
+  const bigCycles  = 3 + Math.random() * 4;
+  const bigPhase   = Math.random() * TAU;
+  // 小うねり: 15〜35周期の高周波エンベロープ
+  const smallCycles = 15 + Math.random() * 20;
+  const smallPhase  = Math.random() * TAU;
+  // 低域補強: 低倍音に追加エネルギー（低音域の変化を豊かに）
+  const bassBoost = 0.5 + Math.random() * 0.8;
+  const bassCutoff = 0.08 + Math.random() * 0.12; // 上位x%を低域とみなす
+  for (let k = 1; k <= BIN_MAX; k++) {
+    const x = k / BIN_MAX;
+    const r1 = Math.random(), r2 = Math.random();
+    const bigEnv   = 0.5 + 0.5 * Math.sin(x * TAU * bigCycles  + bigPhase  + pos * 0.2);
+    const smallEnv = 0.5 + 0.5 * Math.sin(x * TAU * smallCycles + smallPhase + pos * 0.5);
+    const base = Math.pow(r1, 1.2) * (0.4 + 0.6 * (1 - x));
+    const bass = x < bassCutoff ? bassBoost * (1 - x / bassCutoff) : 0;
+    f.amp[k] = clamp01(base * (0.4 * bigEnv + 0.35 * smallEnv + 0.25) + bass * r1);
+    f.phase[k] = r2 * TAU + Math.sin(pos * 0.18 + k * 0.008 + bigPhase) * 0.2;
+  }
+  return f;
+}
+
+// Mountain: ギザギザした高調波とゆったりした大うねり＋小うねりの混在
+// 低域は鋸歯状、高域はランダムピーク
+function coreMountain(pos) {
+  const f = blankFrame();
+  const bigAmp    = 0.6 + Math.random() * 0.4;
+  const bigFreq   = 2 + Math.random() * 5;
+  const smallAmp  = 0.3 + Math.random() * 0.4;
+  const smallFreq = 18 + Math.random() * 25;
+  const phase0    = Math.random() * TAU;
+  // 鋸歯状: 奇数倍音と偶数倍音を交互に強弱
+  const sawBias = 0.3 + Math.random() * 0.5;
+  // 低域のギザギザ密度
+  const bassGrainFreq = 4 + Math.floor(Math.random() * 6);
+  for (let k = 1; k <= BIN_MAX; k++) {
+    const x = k / BIN_MAX;
+    const r1 = Math.random(), r2 = Math.random();
+    // 大うねり
+    const bigEnv = 0.5 + 0.5 * Math.cos(x * TAU * bigFreq + phase0 + pos * 0.15);
+    // 小うねり
+    const smallEnv = 0.5 + 0.5 * Math.sin(x * TAU * smallFreq + phase0 * 1.3 + pos * 0.4);
+    // 低域ギザギザ（倍音番号の奇偶で高低）
+    const sawEnv = (k % 2 === 1) ? 1.0 : (1.0 - sawBias);
+    // 低域グレイン（小周期でリング状）
+    const bassGrain = x < 0.15 ? (0.5 + 0.5 * Math.sin(k * TAU / bassGrainFreq + pos)) : 0;
+    const base = Math.pow(r1, 1.4) * (0.35 + 0.65 * (1 - x) * sawEnv);
+    f.amp[k] = clamp01(base * (0.45 * bigEnv + 0.3 * smallEnv + 0.25) + 0.4 * bassGrain * r1);
+    f.phase[k] = r2 * TAU + (k % 2 === 0 ? Math.PI : 0) * 0.5 + pos * 0.1;
+  }
+  return f;
+}
+
+// Acid: 共振ローパスフィルタのカットオフが掃引されるTB-303的スペクトル
+// フレームごとにカットオフが変化し、共振ピークが明確に動く
+function coreAcid(pos) {
+  const f = blankFrame();
+  // カットオフ位置（フレーム位置と乱数で変化）
+  const cutoff = 0.04 + 0.25 * (0.5 + 0.5 * Math.sin(pos * 1.3 + Math.random() * 0.5));
+  const resonance = 2.5 + Math.random() * 4.0; // 共振の鋭さ
+  const slidePos  = cutoff * BIN_MAX;
+  for (let k = 1; k <= BIN_MAX; k++) {
+    const x = k / BIN_MAX;
+    const r1 = Math.random(), r2 = Math.random();
+    // ローパス部分: cutoff以下はパス、以上は急減衰
+    const lpf = x < cutoff
+      ? 1.0
+      : Math.pow(cutoff / x, 3.5 + resonance * 0.5);
+    // 共振ピーク: カットオフ付近にガウシアンピーク
+    const resPeak = resonance * Math.exp(-0.5 * Math.pow((k - slidePos) / (BIN_MAX * 0.025), 2));
+    // 基本ノコギリ波ベース（Acid=鋸歯波が基本）
+    const sawBase = 1.0 / k;
+    f.amp[k] = clamp01(sawBase * (lpf + resPeak * 0.4) * (0.8 + 0.2 * r1));
+    f.phase[k] = r2 * TAU * 0.3; // 位相は比較的揃える（TB-303風）
+  }
+  return f;
+}
+
+// Cathedral: 深くて広い残響系。倍音が密で空間感があり低域が安定している
+function coreCathedral(pos) {
+  const f = blankFrame();
+  // ルーム共鳴周波数（ランダムに数点）
+  const nModes = 5 + Math.floor(Math.random() * 5);
+  const modes = Array.from({length: nModes}, (_, i) => ({
+    k: 2 + Math.floor(Math.random() * 200),
+    w: 8 + Math.random() * 40,
+    gain: 0.4 + Math.random() * 0.8
+  }));
+  for (let k = 1; k <= BIN_MAX; k++) {
+    const x = k / BIN_MAX;
+    const r1 = Math.random(), r2 = Math.random();
+    // 基礎: なだらかな低域重視エンベロープ
+    const base = Math.pow(1 - x, 1.0) * (0.3 + 0.5 * Math.pow(r1, 1.8));
+    // モード共鳴の重ね合わせ
+    let modeSum = 0;
+    for (const m of modes) {
+      modeSum += m.gain * Math.exp(-0.5 * Math.pow((k - m.k) / m.w, 2));
+    }
+    f.amp[k] = clamp01(base + 0.5 * modeSum * (0.7 + 0.3 * r1));
+    f.phase[k] = r2 * TAU + Math.sin(k * 0.05 + pos * 0.07) * 0.4;
+  }
+  return f;
+}
+
+// Prism: 高域に向かって倍音が密集する虹彩系。低域は疎で鮮明、高域は細密なテクスチャ
+function corePrism(pos) {
+  const f = blankFrame();
+  const bands = 6 + Math.floor(Math.random() * 6);
+  const bandPhase = Math.random() * TAU;
+  for (let k = 1; k <= BIN_MAX; k++) {
+    const x = k / BIN_MAX;
+    const r1 = Math.random(), r2 = Math.random();
+    // バンド密度: 高域ほど細かいリップル
+    const rippleFreq = 2 + x * bands * 8;
+    const ripple = 0.5 + 0.5 * Math.sin(x * TAU * rippleFreq + bandPhase + pos * 0.25);
+    // 低域は疎（一部の倍音のみ強い）
+    const sparseLow = x < 0.1 ? (k % 3 === 1 ? 1.0 : 0.08) : 1.0;
+    const base = Math.pow(r1, 2.0 - x * 1.5) * (0.2 + 0.8 * x * ripple);
+    f.amp[k] = clamp01(base * sparseLow * (0.6 + 0.4 * r1));
+    f.phase[k] = r2 * TAU + x * TAU * 0.5 + pos * 0.12;
+  }
+  return f;
+}
+
+// Fractal: 自己相似的なスケール構造。倍音の間隔に周期性があり複数スケールが共存
+function coreFractal(pos) {
+  const f = blankFrame();
+  const scale1 = 2 + Math.floor(Math.random() * 4);   // 大スケール周期
+  const scale2 = scale1 * (3 + Math.floor(Math.random() * 3)); // 中スケール
+  const scale3 = scale2 * (2 + Math.floor(Math.random() * 2)); // 小スケール
+  const ph0 = Math.random() * TAU;
+  for (let k = 1; k <= BIN_MAX; k++) {
+    const x = k / BIN_MAX;
+    const r1 = Math.random(), r2 = Math.random();
+    // 各スケールでのエンベロープ
+    const e1 = 0.5 + 0.5 * Math.sin(k * TAU / scale1 + ph0 + pos * 0.1);
+    const e2 = 0.5 + 0.5 * Math.sin(k * TAU / scale2 + ph0 * 1.7 + pos * 0.2);
+    const e3 = 0.5 + 0.5 * Math.sin(k * TAU / scale3 + ph0 * 2.3 + pos * 0.35);
+    // 低域補強（低音域の変化を豊かに）
+    const bassEnh = x < 0.12 ? 0.6 * (1 - x / 0.12) : 0;
+    const base = (1 - x) * Math.pow(r1, 1.3);
+    f.amp[k] = clamp01(base * (0.4 * e1 + 0.35 * e2 + 0.25 * e3) + bassEnh * r1);
+    f.phase[k] = r2 * TAU + Math.sin(k / scale1 + pos * 0.15) * 0.5;
+  }
+  return f;
+}
+
+// Tension: 不協和な倍音比率が緊張感を生む。低域に強いうねりがある
+function coreTension(pos) {
+  const f = blankFrame();
+  // 不協和比率（黄金比、√2などの無理数的な比率を使う）
+  const ratios = [1.0, 1.414, 1.618, 2.236, 2.732, 3.141, 4.0, 5.236];
+  const baseFreqBin = 3 + Math.floor(Math.random() * 8);
+  // 低域の大きなうねり
+  const lowSwellK = 2 + Math.floor(Math.random() * 10);
+  const lowSwellGain = 0.5 + Math.random() * 0.8;
+  for (let k = 1; k <= BIN_MAX; k++) {
+    const x = k / BIN_MAX;
+    const r1 = Math.random(), r2 = Math.random();
+    // 不協和倍音への近さで振幅を決定
+    let dissonanceAmp = 0;
+    for (const ratio of ratios) {
+      const target = baseFreqBin * ratio;
+      const dist = Math.abs(k - target);
+      dissonanceAmp += 0.7 * Math.exp(-0.5 * (dist / (1.5 + target * 0.03)) ** 2);
+    }
+    // 低域うねり
+    const lowSwell = k <= lowSwellK * 3
+      ? lowSwellGain * Math.exp(-0.5 * ((k - lowSwellK) / (lowSwellK * 0.6)) ** 2)
+      : 0;
+    const base = Math.pow(r1, 1.6) * (0.3 + 0.5 * (1 - x));
+    f.amp[k] = clamp01(base + 0.6 * dissonanceAmp * (0.8 + 0.2 * r1) + lowSwell);
+    f.phase[k] = r2 * TAU + (k * 0.13 % TAU); // 位相を倍音番号に比例させてザラつかせる
+  }
+  return f;
+}
+
+// Pulse: 短周期パルス列系。倍音が等間隔に並ぶが振幅エンベロープが揺れる
+function corePulse(pos) {
+  const f = blankFrame();
+  const pulseWidth = 0.05 + Math.random() * 0.25; // デューティー比
+  const jitter = Math.random() * 0.3; // 倍音位置のズレ
+  // 矩形波ベース（奇数倍音）にランダムなピッチシフトを加える
+  const detune = 0.98 + Math.random() * 0.04;
+  for (let k = 1; k <= BIN_MAX; k++) {
+    const x = k / BIN_MAX;
+    const r1 = Math.random(), r2 = Math.random();
+    // 矩形波成分（奇数倍音 1/k）
+    const squareAmp = (k % 2 === 1) ? 1.0 / (k * detune) : 0.0;
+    // パルス幅によるスペクトル（sinc関数）
+    const sinc = Math.abs(Math.sin(Math.PI * k * pulseWidth) / (Math.PI * k * pulseWidth + 1e-9));
+    // 全倍音に広がるパルス成分
+    const pulseAmp = sinc * (1 - x * 0.6);
+    // ランダムジッター
+    const jitterMod = 1 - jitter * r1;
+    f.amp[k] = clamp01((squareAmp * 0.5 + pulseAmp * 0.5) * jitterMod);
+    f.phase[k] = r2 * TAU * jitter + (k % 2 === 0 ? 0 : Math.PI * 0.5);
+  }
+  return f;
+}
+
+// ─── Core選択ディスパッチャ ──────────────────────────────────────
+function createBaseKeyframe(pos, coreType) {
+  switch (coreType) {
+    case 'ring':      return coreRing(pos);
+    case 'mountain':  return coreMountain(pos);
+    case 'acid':      return coreAcid(pos);
+    case 'cathedral': return coreCathedral(pos);
+    case 'prism':     return corePrism(pos);
+    case 'fractal':   return coreFractal(pos);
+    case 'tension':   return coreTension(pos);
+    case 'pulse':     return corePulse(pos);
+    default:          return coreMetaAI(pos);  // metaai or fallback
+  }
+}
+
+function makeKeyframes(depth, coreType) {
+  const segs = 8;
+  const posList = [];
+  for (let i = 0; i <= segs; i++) {
+    let p = Math.round(i * depth / segs);
+    if (p >= depth) p = depth - 1;
+    if (!posList.includes(p)) posList.push(p);
+  }
+  return posList.map(pos => ({ pos, frame: createBaseKeyframe(pos, coreType) }));
+}
+// ──────────────────────────────────────────────────────────────────
+
+function interpFrames(a, b, t) { return blendFrames(a, b, t); }
+
+function resampleFrames(frames, mapper) {
+  const depth = frames.length;
+  const out = new Array(depth);
+  if (depth === 1) return [cloneFrame(frames[0])];
+  for (let i = 0; i < depth; i++) {
+    const t = i / (depth - 1);
+    const u = clamp01(mapper(t, i, depth));
+    const p = u * (depth - 1);
+    const j = Math.floor(p);
+    const f = p - j;
+    out[i] = interpFrames(frames[j], frames[Math.min(j + 1, depth - 1)], f);
+  }
+  return out;
+}
+
+function resampleSpectrum(frame, mapper, ampFn = null, phaseFn = null) {
+  const out = blankFrame();
+  for (let k = 1; k <= BIN_MAX; k++) {
+    const x = clamp(mapper(k), 1, BIN_MAX);
+    const i = Math.floor(x), f = x - i;
+    const i2 = Math.min(i + 1, BIN_MAX);
+    let amp = lerp(frame.amp[i], frame.amp[i2], f);
+    let phase = phaseLerp(frame.phase[i], frame.phase[i2], f);
+    if (ampFn) amp = ampFn(amp, k, frame);
+    if (phaseFn) phase = phaseFn(phase, k, frame);
+    out.amp[k] = Math.max(0, amp);
+    out.phase[k] = phase;
+  }
+  return out;
+}
+
+function smoothBins(frame, radius = 2, strength = 1) {
+  const out = blankFrame();
+  const r = Math.max(1, Math.round(radius));
+  for (let k = 1; k <= BIN_MAX; k++) {
+    let a = 0, c = 0, phx = 0, phy = 0;
+    for (let j = Math.max(1, k - r); j <= Math.min(BIN_MAX, k + r); j++) {
+      const w = 1 - Math.abs(j - k) / (r + 1);
+      a += frame.amp[j] * w;
+      phx += Math.cos(frame.phase[j]) * w;
+      phy += Math.sin(frame.phase[j]) * w;
+      c += w;
+    }
+    const avgA = a / Math.max(c, 1e-9);
+    const avgP = Math.atan2(phy, phx);
+    out.amp[k] = lerp(frame.amp[k], avgA, clamp01(strength));
+    out.phase[k] = phaseLerp(frame.phase[k], avgP, clamp01(strength));
+  }
+  return out;
+}
+
+function normalizeFrame(frame, targetPeak = 1) {
+  let max = 0;
+  for (let k = 1; k <= BIN_MAX; k++) if (frame.amp[k] > max) max = frame.amp[k];
+  if (max <= 0) return frame;
+  const scale = targetPeak / max;
+  for (let k = 1; k <= BIN_MAX; k++) frame.amp[k] *= scale;
+  return frame;
+}
+
+function applyCharacter(frame, effect, strength, frameIndex, depth, seed) {
+  const out = cloneFrame(frame);
+  const s = clamp01(strength);
+  if (effect === 'clean') return out;  // Clean: エフェクトなし、そのまま返す
+  if (effect === 'frequency-skew') effect = 'spectral-warp';
+  if (effect === 'magnitude-smooth') effect = 'spectral-blur';
+  const kShift = 1 + s * 0.6;
+  if (effect === 'warm') {
+    for (let k = 1; k <= BIN_MAX; k++) out.amp[k] *= Math.pow(1 - k / BIN_MAX, 0.4 + 1.5 * s);
+    return smoothBins(out, 3, 0.6 * s);
+  }
+  if (effect === 'bright') {
+    for (let k = 1; k <= BIN_MAX; k++) out.amp[k] *= Math.pow(k / BIN_MAX, 0.2 + 0.8 * s);
+    return out;
+  }
+  if (effect === 'dark') {
+    for (let k = 1; k <= BIN_MAX; k++) out.amp[k] *= Math.pow(1 - k / BIN_MAX, 1.6 + 1.8 * s);
+    return smoothBins(out, 4, 0.4);
+  }
+  if (effect === 'metallic') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      out.amp[k] *= (k % 2 ? 1.2 + 0.8 * s : 0.35 + 0.4 * (1 - s));
+      out.phase[k] = (k % 2 ? 0 : Math.PI) + (hash01(seed + k * 7.7) - 0.5) * 0.3 * s;
+    }
+    return out;
+  }
+  if (effect === 'formant' || effect === 'vowel') {
+    const c1 = 70 + hash01(seed + 1.1) * 350;
+    const c2 = 220 + hash01(seed + 2.2) * 1100;
+    const w1 = 22 + hash01(seed + 3.3) * 70;
+    const w2 = 35 + hash01(seed + 4.4) * 120;
+    for (let k = 1; k <= BIN_MAX; k++) {
+      const d1 = (k - c1) / w1, d2 = (k - c2) / w2;
+      const env = 0.08 + 1.6 * Math.exp(-0.5 * d1 * d1) + 1.0 * Math.exp(-0.5 * d2 * d2);
+      out.amp[k] *= env;
+      if (effect === 'vowel') out.phase[k] = phaseLerp(out.phase[k], 0, 0.25 * s);
+    }
+    return out;
+  }
+  if (effect === 'sparse') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      const keep = hash01(seed + k * 17.1 + frameIndex * 3.7) > 0.82 - 0.35 * s;
+      out.amp[k] *= keep ? 1 : 0.02;
+    }
+    return out;
+  }
+  if (effect === 'dense') {
+    const blur = smoothBins(out, 3, 0.85);
+    for (let k = 1; k <= BIN_MAX; k++) out.amp[k] = lerp(out.amp[k], blur.amp[k] + 0.1, 0.55 * s);
+    return out;
+  }
+  if (effect === 'noisy') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      out.amp[k] = Math.max(0, out.amp[k] * (0.5 + 0.9 * hash01(seed + k * 2.3)) + 0.05 * s * hash01(seed + k * 5.1));
+      out.phase[k] += (hash01(seed + k * 8.7) - 0.5) * TAU * 0.12 * s;
+    }
+    return out;
+  }
+  if (effect === 'fm') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      out.amp[k] *= 0.7 + 0.45 * Math.sin(k * 0.015 + frameIndex * 0.11 + seed * 0.01);
+      out.phase[k] += Math.sin(k * 0.02 + frameIndex * 0.17 + seed * 0.01) * 1.1 * s;
+    }
+    return out;
+  }
+  if (effect === 'liquid') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      out.amp[k] *= 0.82 + 0.22 * Math.sin(k * 0.014 + frameIndex * 0.06 + seed * 0.01);
+      out.phase[k] += Math.sin(k * 0.018 + frameIndex * 0.08) * 0.7 * s;
+    }
+    return smoothBins(out, 2, 0.45 * s);
+  }
+  if (effect === 'glass') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      out.amp[k] *= Math.pow(k / BIN_MAX, 0.9 - 0.5 * s) * (0.7 + 0.3 * Math.sin(k * 0.09));
+      out.phase[k] = (k % 3 === 0 ? 0 : out.phase[k]) + (hash01(seed + k * 9.9) - 0.5) * 0.4 * s;
+    }
+    return out;
+  }
+  if (effect === 'breathy') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      out.amp[k] = out.amp[k] * (0.55 + 0.45 * Math.pow(1 - k / BIN_MAX, 1.1)) + 0.03 * s * hash01(seed + k * 11.1);
+      out.phase[k] += (hash01(seed + k * 3.3) - 0.5) * 0.8 * s;
+    }
+    return out;
+  }
+  if (effect === 'hollow') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      const notch = 1 - Math.exp(-0.5 * Math.pow((k - 220) / 120, 2));
+      out.amp[k] *= notch;
+    }
+    return out;
+  }
+  if (effect === 'buzz') {
+    for (let k = 1; k <= BIN_MAX; k++) out.amp[k] *= (k % 2 ? 1.7 + 0.6 * s : 0.25 + 0.4 * (1 - s));
+    return out;
+  }
+  if (effect === 'grainy') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      const q = 16 + Math.round(80 * (1 - s));
+      out.amp[k] = Math.round(out.amp[k] * q) / q;
+      out.phase[k] += (hash01(seed + k * 14.7) - 0.5) * 0.5 * s;
+    }
+    return out;
+  }
+  if (effect === 'broken') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      const gate = hash01(seed + k * 19.1 + frameIndex * 0.7) > 0.62 - 0.25 * s;
+      out.amp[k] *= gate ? 1 : 0;
+      if (!gate) out.phase[k] = (hash01(seed + k * 8.3) > 0.5 ? 0 : Math.PI);
+    }
+    return out;
+  }
+  if (effect === 'robot') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      out.amp[k] *= 0.65 + 0.35 * Math.sin(k * 0.09);
+      out.phase[k] = (k % 4 === 0 ? 0 : Math.PI) + (out.phase[k] - Math.PI) * 0.15 * (1 - s);
+    }
+    return out;
+  }
+  if (effect === 'inharmonic') {
+    return resampleSpectrum(out, k => 1 + Math.pow((k - 1) / BIN_MAX, 1.08 + 0.65 * s) * (BIN_MAX - 1),
+      amp => amp,
+      ph => ph + (hash01(seed + kShift) - 0.5) * 0.2 * s);
+  }
+  if (effect === 'phase-sweep') {
+    for (let k = 1; k <= BIN_MAX; k++) out.phase[k] += k * 0.06 * s + frameIndex * 0.1;
+    return out;
+  }
+  if (effect === 'phase-walk') {
+    for (let k = 1; k <= BIN_MAX; k++) out.phase[k] += (hash01(seed + k * 31.7) - 0.5) * 2.1 * s + Math.sin(k * 0.013 + frameIndex * 0.2) * 0.35;
+    return out;
+  }
+  if (effect === 'phase-flip') {
+    for (let k = 1; k <= BIN_MAX; k++) if (hash01(seed + k * 7.3 + frameIndex * 1.4) > 0.5) out.phase[k] += Math.PI * s;
+    return out;
+  }
+  if (effect === 'phase-align') {
+    const ref = out.phase[1];
+    for (let k = 1; k <= BIN_MAX; k++) out.phase[k] = phaseLerp(out.phase[k], ref + k * 0.002, s);
+    return out;
+  }
+  if (effect === 'phase-smooth') {
+    const copy = cloneFrame(out);
+    for (let k = 1; k <= BIN_MAX; k++) {
+      let phx = 0, phy = 0;
+      for (let j = Math.max(1, k - 4); j <= Math.min(BIN_MAX, k + 4); j++) {
+        const w = 1 - Math.abs(j - k) / 5;
+        phx += Math.cos(copy.phase[j]) * w; phy += Math.sin(copy.phase[j]) * w;
+      }
+      out.phase[k] = phaseLerp(copy.phase[k], Math.atan2(phy, phx), 0.35 + 0.5 * s);
+    }
+    return out;
+  }
+  if (effect === 'phase-rotate') {
+    const rot = TAU * 0.08 * s;
+    for (let k = 1; k <= BIN_MAX; k++) out.phase[k] += rot;
+    return out;
+  }
+  if (effect === 'phase-drift') {
+    const drift = (frameIndex / Math.max(1, depth - 1)) * TAU * 0.45 * s;
+    for (let k = 1; k <= BIN_MAX; k++) out.phase[k] += drift + Math.sin(k * 0.005 + frameIndex * 0.03) * 0.08 * s;
+    return out;
+  }
+  if (effect === 'phase-wrap') {
+    for (let k = 1; k <= BIN_MAX; k++) out.phase[k] = wrapPhase(out.phase[k] * (1 + 0.25 * s));
+    return out;
+  }
+  if (effect === 'phase-randomize') {
+    for (let k = 1; k <= BIN_MAX; k++) out.phase[k] = TAU * hash01(seed + k * 21.7 + frameIndex * 0.9);
+    return out;
+  }
+  if (effect === 'phase-lock') {
+    let peak = 1, peakAmp = 0;
+    for (let k = 1; k <= BIN_MAX; k++) if (out.amp[k] > peakAmp) { peakAmp = out.amp[k]; peak = k; }
+    const ref = out.phase[peak];
+    for (let k = 1; k <= BIN_MAX; k++) out.phase[k] = phaseLerp(out.phase[k], ref, s);
+    return out;
+  }
+  if (effect === 'phase-spread') {
+    for (let k = 1; k <= BIN_MAX; k++) out.phase[k] += (k / BIN_MAX) * TAU * 0.35 * s;
+    return out;
+  }
+  if (effect === 'phase-chase') return out;
+  if (effect === 'spectral-blur' || effect === 'magnitude-smooth') {
+    return smoothBins(out, 2 + Math.round(3 * s), 0.75 + 0.2 * s);
+  }
+  if (effect === 'spectral-sharpen') {
+    const blur = smoothBins(out, 3, 1);
+    for (let k = 1; k <= BIN_MAX; k++) out.amp[k] = Math.max(0, out.amp[k] + (out.amp[k] - blur.amp[k]) * (0.8 * s));
+    return out;
+  }
+  if (effect === 'spectral-warp' || effect === 'frequency-skew' || effect === 'partial-remap') {
+    const power = effect === 'partial-remap' ? 0.75 + 1.1 * s : 0.45 + 1.7 * s;
+    return resampleSpectrum(out, k => 1 + Math.pow((k - 1) / BIN_MAX, power) * (BIN_MAX - 1));
+  }
+  if (effect === 'spectral-freeze') {
+    const frozen = frameIndex <= 0 ? out : cloneFrame(frame);
+    for (let k = 1; k <= BIN_MAX; k++) {
+      out.amp[k] = lerp(out.amp[k], frozen.amp[k], 0.6 + 0.35 * s);
+      out.phase[k] = phaseLerp(out.phase[k], frozen.phase[k], 0.6 + 0.35 * s);
+    }
+    return out;
+  }
+  if (effect === 'spectral-smear') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      out.amp[k] = lerp(out.amp[k], out.amp[Math.max(1, k - 1)], 0.1 * s);
+      out.phase[k] = phaseLerp(out.phase[k], frame.phase[k], 0.15 * s);
+    }
+    return out;
+  }
+  if (effect === 'spectral-fold') {
+    return resampleSpectrum(out, k => {
+      const p = (k - 1) / BIN_MAX;
+      const folds = 1 + Math.floor(2 * s);
+      const tri = 1 - Math.abs(((p * folds) % 2) - 1);
+      return 1 + tri * (BIN_MAX - 1);
+    });
+  }
+  if (effect === 'spectral-quantize') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      const q = 8 + Math.round(56 * (1 - s));
+      out.amp[k] = Math.round(out.amp[k] * q) / q;
+      out.phase[k] = Math.round(out.phase[k] / (TAU / (12 + Math.round(20 * s)))) * (TAU / (12 + Math.round(20 * s)));
+    }
+    return out;
+  }
+  if (effect === 'spectral-scatter') {
+    return resampleSpectrum(out, k => clamp(k + (hash01(seed + k * 6.6) - 0.5) * (20 + 120 * s), 1, BIN_MAX),
+      amp => amp * (0.75 + 0.5 * hash01(seed + amp * 1000)),
+      ph => ph + (hash01(seed + ph * 10) - 0.5) * 0.6 * s);
+  }
+  if (effect === 'comb-mask') {
+    for (let k = 1; k <= BIN_MAX; k++) out.amp[k] *= 0.35 + 0.65 * Math.sin(k * (0.02 + 0.04 * s)) ** 2;
+    return out;
+  }
+  if (effect === 'mirror-spectrum') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      const m = BIN_MAX + 1 - k;
+      out.amp[k] = lerp(out.amp[k], out.amp[m], 0.45 * s);
+      out.phase[k] = phaseLerp(out.phase[k], -out.phase[m], 0.35 * s);
+    }
+    return out;
+  }
+  if (effect === 'magnitude-tilt') {
+    const tilt = -1.8 + 3.6 * s;
+    for (let k = 1; k <= BIN_MAX; k++) out.amp[k] *= Math.pow(k / BIN_MAX, tilt);
+    return out;
+  }
+  if (effect === 'partial-shuffle') {
+    const idxs = Array.from({ length: BIN_MAX }, (_, i) => i + 1);
+    for (let i = idxs.length - 1; i > 0; i--) {
+      const j = (hash01(seed + i * 13.7) * (i + 1)) | 0;
+      [idxs[i], idxs[j]] = [idxs[j], idxs[i]];
+    }
+    const copy = cloneFrame(out);
+    for (let k = 1; k <= BIN_MAX; k++) {
+      out.amp[k] = copy.amp[idxs[k - 1]];
+      out.phase[k] = copy.phase[idxs[k - 1]];
+    }
+    return out;
+  }
+  if (effect === 'odd-even-split') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      if (k % 2) out.amp[k] *= 1.25 + 0.6 * s; else out.amp[k] *= 0.45 + 0.35 * (1 - s);
+    }
+    return out;
+  }
+  if (effect === 'band-split') {
+    for (let k = 1; k <= BIN_MAX; k++) {
+      const x = k / BIN_MAX;
+      if (x < 0.25) out.amp[k] *= 1.05 + 0.5 * s;
+      else if (x < 0.65) out.amp[k] *= 0.75 + 0.2 * s;
+      else out.amp[k] *= 0.55 + 0.65 * s;
+    }
+    return out;
+  }
+  if (effect === 'formant-shift') {
+    const shift = (hash01(seed + 77.7) - 0.5) * 160 * s;
+    const c = 180 + shift, w = 80 + 120 * s;
+    for (let k = 1; k <= BIN_MAX; k++) {
+      const env = 0.2 + 1.6 * Math.exp(-0.5 * Math.pow((k - c) / w, 2));
+      out.amp[k] *= env;
+    }
+    return out;
+  }
+  if (effect === 'formant-lock') {
+    const c = 220, w = 90;
+    for (let k = 1; k <= BIN_MAX; k++) {
+      const env = 0.25 + 1.2 * Math.exp(-0.5 * Math.pow((k - c) / w, 2));
+      out.amp[k] = lerp(out.amp[k], out.amp[k] * env, 0.7 * s);
+    }
+    return out;
+  }
+  if (effect === 'harmonic-boost') {
+    for (let k = 1; k <= BIN_MAX; k++) out.amp[k] *= 0.9 + 0.8 * s * Math.pow(1 - k / BIN_MAX, 0.45);
+    return out;
+  }
+  if (effect === 'harmonic-cut') {
+    for (let k = 1; k <= BIN_MAX; k++) out.amp[k] *= 0.35 + 0.65 * Math.pow(1 - k / BIN_MAX, 1.2 + s);
+    return out;
+  }
+  if (effect === 'harmonic-hole') {
+    for (let k = 1; k <= BIN_MAX; k++) if ((k % (4 + Math.round(10 * s))) < 2) out.amp[k] *= 0.12;
+    return out;
+  }
+  if (effect === 'harmonic-fill') {
+    const blur = smoothBins(out, 5, 1);
+    for (let k = 1; k <= BIN_MAX; k++) out.amp[k] = lerp(out.amp[k], blur.amp[k], 0.55 * s) + 0.04 * s;
+    return out;
+  }
+  return out;
+}
+
+function applyLayer(frames, effect, strength, layerIndex, seed) {
+  if (effect === 'random') effect = choice(EFFECT_KEYS.filter(x => x !== 'random'));
+  const depth = frames.length;
+
+  if (effect === 'time-skew') {
+    const skew = 0.35 + 2.6 * clamp01(strength);
+    return resampleFrames(frames, t => Math.pow(t, skew));
+  }
+  if (effect === 'time-warp') {
+    const amount = 0.15 + 0.35 * clamp01(strength);
+    return resampleFrames(frames, (t, i) => clamp01(t + Math.sin((t * TAU) * (1.2 + amount) + layerIndex) * amount * 0.4 + (hash01(seed + i * 3.3) - 0.5) * 0.03));
+  }
+  if (effect === 'time-reverse') return [...frames].reverse().map(cloneFrame);
+  if (effect === 'time-pingpong') {
+    return resampleFrames(frames, t => { const x = t * 2; return x <= 1 ? x : 2 - x; });
+  }
+  if (effect === 'time-jitter') {
+    const amount = 0.02 + 0.12 * clamp01(strength);
+    return resampleFrames(frames, (t, i) => clamp01(t + (hash01(seed + i * 12.7) - 0.5) * amount));
+  }
+  if (effect === 'time-hold') {
+    const steps = 2 + Math.round(10 * clamp01(strength));
+    return resampleFrames(frames, t => Math.floor(t * steps) / steps);
+  }
+  if (effect === 'time-jump') {
+    const segments = 3 + Math.round(8 * clamp01(strength));
+    return resampleFrames(frames, (t, i) => {
+      const seg = Math.min(segments - 1, Math.floor(t * segments));
+      return hash01(seed + seg * 19.7 + layerIndex * 5.1);
+    });
+  }
+  if (effect === 'spectral-freeze') {
+    const ref = frames[(depth / 2) | 0] || frames[0];
+    return frames.map(f => {
+      const out = cloneFrame(f);
+      for (let k = 1; k <= BIN_MAX; k++) {
+        out.amp[k] = lerp(out.amp[k], ref.amp[k], 0.68 + 0.28 * clamp01(strength));
+        out.phase[k] = phaseLerp(out.phase[k], ref.phase[k], 0.68 + 0.28 * clamp01(strength));
+      }
+      return out;
+    });
+  }
+  if (effect === 'spectral-smear') {
+    const out = frames.map(cloneFrame);
+    for (let i = 1; i < depth; i++) {
+      for (let k = 1; k <= BIN_MAX; k++) {
+        out[i].amp[k] = lerp(frames[i].amp[k], frames[i - 1].amp[k], 0.2 * clamp01(strength));
+        out[i].phase[k] = phaseLerp(frames[i].phase[k], frames[i - 1].phase[k], 0.25 * clamp01(strength));
+      }
+    }
+    return out;
+  }
+  if (effect === 'phase-chase') {
+    const out = frames.map(cloneFrame);
+    for (let i = 1; i < depth; i++) {
+      for (let k = 1; k <= BIN_MAX; k++) {
+        out[i].phase[k] = phaseLerp(frames[i].phase[k], out[i - 1].phase[k], 0.35 * clamp01(strength));
+      }
+    }
+    return out;
+  }
+
+  return frames.map((frame, i) => applyCharacter(frame, effect, strength, i, depth, seed + i * 0.53));
+}
+
+function sealLoop(frames) {
+  if (frames.length < 2) return frames;
+  const n = frames.length;
+  const edge = Math.min(3, Math.floor(n / 2));
+  const common = blendFrames(frames[0], frames[n - 1], 0.5);
+  frames[0] = cloneFrame(common);
+  frames[n - 1] = cloneFrame(common);
+  for (let i = 1; i < edge; i++) {
+    const t = i / edge;
+    frames[i] = blendFrames(common, frames[i], t);
+    frames[n - 1 - i] = blendFrames(common, frames[n - 1 - i], t);
+  }
+  return frames;
+}
+
+function framesToAudio(frames, sr) {
+  const depth = frames.length;
+  const total = depth * N;
+  const data = new Float32Array(total);
+  const re = new Float64Array(N);
+  const im = new Float64Array(N);
+  let maxAbs = 0;
+  const sumAmp = new Float64Array(BIN_MAX + 1);
+
+  for (let z = 0; z < depth; z++) {
+    const f = frames[z];
+    re.fill(0); im.fill(0);
+    for (let k = 1; k <= BIN_MAX; k++) {
+      sumAmp[k] += f.amp[k];
+      re[k] = f.amp[k] * Math.cos(f.phase[k]);
+      im[k] = f.amp[k] * Math.sin(f.phase[k]);
+    }
+    fft(re, im, true);
+    const off = z * N;
+    for (let n = 0; n < N; n++) {
+      const v = N * im[n];
+      data[off + n] = v;
+      const av = Math.abs(v);
+      if (av > maxAbs) maxAbs = av;
+    }
+  }
+  const scale = maxAbs > 0 ? 0.9 / maxAbs : 1;
+  for (let i = 0; i < data.length; i++) data[i] *= scale;
+  const avgAmp = new Float32Array(BIN_MAX + 1);
+  for (let k = 1; k <= BIN_MAX; k++) avgAmp[k] = (sumAmp[k] / Math.max(1, depth)) * scale;
+  return { data, avgAmp };
+}
+
+// ─── 音声ファイルからWaveTable生成 ─────────────────────────────
+
+// 音声ファイルをデコードして正規化された Float32Array を返す
+async function decodeAudioFile(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+  ctx.close();
+  // モノラルに合成
+  const len = audioBuffer.length;
+  const data = new Float32Array(len);
+  for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+    const chData = audioBuffer.getChannelData(ch);
+    const w = 1 / audioBuffer.numberOfChannels;
+    for (let i = 0; i < len; i++) data[i] += chData[i] * w;
+  }
+  // ファイルSRとターゲットSRが異なる場合は線形リサンプリング
+  const fileSR = audioBuffer.sampleRate;
+  const targetSR = parseInt(document.getElementById('sr').value) || 48000;
+  if (fileSR === targetSR) return { data, sr: fileSR };
+  const ratio = targetSR / fileSR;
+  const newLen = Math.floor(len * ratio);
+  const resampled = new Float32Array(newLen);
+  for (let i = 0; i < newLen; i++) {
+    const src = i / ratio;
+    const si = Math.floor(src);
+    const t  = src - si;
+    resampled[i] = (data[si] || 0) * (1 - t) + (data[Math.min(si+1, len-1)] || 0) * t;
+  }
+  return { data: resampled, sr: targetSR };
+}
+
+// Hann窓 + ゼロ位相FFTでスペクトルフレームを取得
+function audioToFrames(data, depth) {
+  const half = N >> 1;
+  const frames = [];
+  for (let fi = 0; fi < depth; fi++) {
+    const t = depth <= 1 ? 0.5 : fi / (depth - 1);
+    const start = Math.min(Math.floor((data.length - N) * t), data.length - N);
+    const re = new Float64Array(N);
+    const im = new Float64Array(N);
+    // Hann窓 + ゼロ位相（循環シフト）
+    for (let i = 0; i < N; i++) {
+      const win = 0.5 - 0.5 * Math.cos(TAU * i / N);
+      re[(i + half) % N] = (data[start + i] || 0) * win * 2.0; // Hann補正
+    }
+    fftInPlace(re, im);
+    // 振幅・位相抽出
+    let maxAmp = 1e-12;
+    for (let k = 1; k <= BIN_MAX; k++) {
+      const m = Math.sqrt(re[k]*re[k] + im[k]*im[k]);
+      if (m > maxAmp) maxAmp = m;
+    }
+    const f = blankFrame();
+    for (let k = 1; k <= BIN_MAX; k++) {
+      f.amp[k]   = clamp01(Math.sqrt(re[k]*re[k] + im[k]*im[k]) / maxAmp);
+      f.phase[k] = Math.atan2(im[k], re[k]);
+    }
+    frames.push(f);
+  }
+  return frames;
+}
+
+// FFT（インプレース・基数2・Cooley-Tukey）
+const _twCache = new Map();
+function fftInPlace(re, im) {
+  const n = re.length;
+  // bit-reversal
+  let j = 0;
+  for (let i = 1; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      let t=re[i]; re[i]=re[j]; re[j]=t;
+      t=im[i]; im[i]=im[j]; im[j]=t;
+    }
+  }
+  // butterfly
+  if (!_twCache.has(n)) {
+    const cos = new Float64Array(n/2), sin = new Float64Array(n/2);
+    for (let i=0;i<n/2;i++) { cos[i]=Math.cos(TAU*i/n); sin[i]=Math.sin(TAU*i/n); }
+    _twCache.set(n, {cos, sin});
+  }
+  const {cos, sin} = _twCache.get(n);
+  for (let size=2; size<=n; size<<=1) {
+    const half=size>>1, step=n/size;
+    for (let i=0;i<n;i+=size) {
+      for (let k=0;k<half;k++) {
+        const ti=k*step;
+        const ar=re[i+k], ai=im[i+k], br=re[i+k+half], bi=im[i+k+half];
+        const tr= br*cos[ti]+bi*sin[ti], ti2=-br*sin[ti]+bi*cos[ti];
+        re[i+k]=ar+tr; im[i+k]=ai+ti2;
+        re[i+k+half]=ar-tr; im[i+k+half]=ai-ti2;
+      }
+    }
+  }
+}
+
+async function generateFromAudioFile() {
+  const fileInput = document.getElementById('audioFileInput');
+  if (!fileInput.files.length) { alert('音声ファイルを選択してください。'); return; }
+  const btn = document.getElementById('generateFromFile');
+  const grid = document.getElementById('grid');
+  if (activePlayback) stopPlayback(activePlayback);
+  grid.innerHTML = '';
+  btn.disabled = true;
+  btn.textContent = '処理中...';
+  try {
+    const count = parseInt(document.getElementById('count').value) || 1;
+    const seconds = parseFloat(document.getElementById('seconds').value) || 5;
+    const sr = parseInt(document.getElementById('sr').value) || 48000;
+    const layers = getSelectedLayers();
+    const { data, sr: fileSR } = await decodeAudioFile(fileInput.files[0]);
+    const depth = Math.max(8, Math.round(seconds * sr / N));
+
+    for (let ci = 0; ci < count; ci++) {
+      // フレーム抽出
+      const frames = audioToFrames(data, depth);
+
+      // レイヤーエフェクト適用（generateWavetable と同じロジック）
+      const resolved = layers.map((layer, idx) => {
+        const key = layer.key === 'random' ? choice(EFFECT_KEYS.filter(x => x !== 'random' && x !== 'clean')) : layer.key;
+        return { key, label: `${idx+1}:${EFFECT_LABELS[key]||key}`, strength: layer.strength ?? 1 };
+      });
+      const seedBase = Math.random() * 10000 + 31.4159;
+      for (let i = 0; i < resolved.length; i++) {
+        const effFrames = applyLayer(frames, resolved[i].key, resolved[i].strength, i, seedBase + i * 13.7);
+        const smooth = layers[i] ? (layers[i].smooth || 0) : 0;
+        if (smooth > 0) {
+          for (let z = 1; z < depth - 1; z++) {
+            for (let k = 1; k <= BIN_MAX; k++) {
+              const prev = effFrames[z-1], cur = effFrames[z], next = effFrames[z+1];
+              effFrames[z].amp[k] = lerp(cur.amp[k], lerp(prev.amp[k], next.amp[k], 0.5), smooth);
+              const phx = (Math.cos(prev.phase[k]) + Math.cos(next.phase[k])) * 0.5;
+              const phy = (Math.sin(prev.phase[k]) + Math.sin(next.phase[k])) * 0.5;
+              effFrames[z].phase[k] = phaseLerp(cur.phase[k], Math.atan2(phy, phx), smooth);
+            }
+          }
+        }
+        frames.splice(0, frames.length, ...effFrames);
+      }
+
+      const audio = framesToAudio(frames, sr);
+      const wt = { data: audio.data, depth, sr, avgAmp: audio.avgAmp, layers: resolved, baseKey: 'file', coreType: 'file' };
+      const layerText = resolved.map(r => r.label).join(' → ') || 'Clean';
+      addCard(ci, wt, `Core:file | ${layerText}`);
+      await new Promise(r => setTimeout(r, 0));
+    }
+  } catch(e) {
+    console.error(e);
+    alert('エラー: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'ファイルから生成';
+  }
+}
+
+
+async function generateWavetable(seconds, sr, layerDefs, baseEffect, coreType) {
+  const depth = Math.max(8, Math.round(seconds * sr / N));
+  const keyframes = makeKeyframes(depth, coreType || 'metaai');
+  const frames = new Array(depth);
+  let kfIdx = 0;
+
+  for (let z = 0; z < depth; z++) {
+    while (kfIdx < keyframes.length - 2 && z > keyframes[kfIdx + 1].pos) kfIdx++;
+    const k0 = keyframes[kfIdx];
+    const k1 = keyframes[Math.min(kfIdx + 1, keyframes.length - 1)];
+    const span = (k1.pos - k0.pos) || 1;
+    const t = clamp01((z - k0.pos) / span);
+    frames[z] = blendFrames(k0.frame, k1.frame, smoothstep(t));
+  }
+
+  const resolved = layerDefs.map((layer, idx) => {
+    const key = layer.key === 'random' ? choice(EFFECT_KEYS.filter(x => x !== 'random')) : layer.key;
+    return { key, label: `${idx + 1}:${EFFECT_LABELS[key] || key}`, strength: layer.strength ?? 1 };
+  });
+
+  const seedBase = Math.random() * 10000 + 31.4159;
+
+  // Baseエフェクト（Layer 0として最初に適用）
+  const baseKey = typeof baseEffect !== 'undefined' && baseEffect && baseEffect !== 'random'
+    ? baseEffect
+    : choice(EFFECT_KEYS.filter(x => x !== 'random'));
+  frames.splice(0, frames.length, ...applyLayer(frames, baseKey, 1, -1, seedBase - 7.3));
+
+  for (let i = 0; i < resolved.length; i++) {
+    const effFrames = applyLayer(frames, resolved[i].key, resolved[i].strength, i, seedBase + i * 13.7);
+    // 奥行き方向Smooth（フレーム間補間）
+    const smooth = layerDefs[i] ? (layerDefs[i].smooth || 0) : 0;
+    if (smooth > 0) {
+      for (let z = 1; z < depth - 1; z++) {
+        for (let k = 1; k <= BIN_MAX; k++) {
+          const prev = effFrames[z - 1], cur = effFrames[z], next = effFrames[z + 1];
+          effFrames[z].amp[k] = lerp(cur.amp[k], lerp(prev.amp[k], next.amp[k], 0.5), smooth);
+          const phx = (Math.cos(prev.phase[k]) + Math.cos(next.phase[k])) * 0.5;
+          const phy = (Math.sin(prev.phase[k]) + Math.sin(next.phase[k])) * 0.5;
+          effFrames[z].phase[k] = phaseLerp(cur.phase[k], Math.atan2(phy, phx), smooth);
+        }
+      }
+    }
+    frames.splice(0, frames.length, ...effFrames);
+  }
+
+  sealLoop(frames);
+  const audio = framesToAudio(frames, sr);
+  return { data: audio.data, depth, sr, avgAmp: audio.avgAmp, layers: resolved, baseKey, coreType: coreType || 'metaai' };
+}
+
+function drawPreview(canvas, data, depth) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.fillStyle = '#0b0b0f';
+  ctx.fillRect(0, 0, w, h);
+  const lines = Math.min(depth, 180);
+  const step = depth / lines;
+  const scaleX = w / N * 0.82;
+  const scaleY = h * 0.14;
+  const baseY = h * 0.78;
+  const perspective = 0.32;
+  ctx.lineWidth = 1.1;
+  for (let li = 0; li < lines; li++) {
+    const z = Math.floor((lines - 1 - li) * step);
+    const depthRatio = li / lines;
+    const yOff = depthRatio * h * 0.55;
+    const xShift = depthRatio * w * perspective;
+    const alpha = 0.15 + 0.7 * depthRatio;
+    ctx.beginPath();
+    const offset = z * N;
+    for (let i = 0; i < N; i += 2) {
+      const s = data[offset + i];
+      const x = (i - N / 2) * scaleX + w * 0.5 - xShift + 18;
+      const y = baseY - yOff - s * scaleY * (1 - depthRatio * 0.3);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = `rgba(168,85,247,${alpha})`;
+    ctx.stroke();
+  }
+}
+
+function drawSpectrum(canvas, avgAmp) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.fillStyle = '#050507';
+  ctx.fillRect(0, 0, w, h);
+  let max = 0;
+  for (let k = 1; k <= BIN_MAX; k++) if (avgAmp[k] > max) max = avgAmp[k];
+  if (max === 0) max = 1;
+  ctx.fillStyle = '#a855f7';
+  for (let k = 1; k <= BIN_MAX; k++) {
+    const v = avgAmp[k] / max;
+    const bh = Math.max(1, v * h);
+    ctx.fillRect(k - 1, h - bh, 1, bh);
+  }
+}
+
+function exportWav(data, sr) {
+  const len = data.length;
+  const buffer = new ArrayBuffer(44 + len * 2);
+  const view = new DataView(buffer);
+  const writeStr = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + len * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sr, true);
+  view.setUint32(28, sr * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, len * 2, true);
+  let off = 44;
+  for (let i = 0; i < len; i++) {
+    let s = data[i];
+    if (s > 1) s = 1; else if (s < -1) s = -1;
+    view.setInt16(off, s < 0 ? s * 32768 : s * 32767, true);
+    off += 2;
+  }
+  return new Blob([view], { type: 'audio/wav' });
+}
+
+function createLayerRow(value = 'random', strength = 1) {
+  const row = document.createElement('div');
+  row.className = 'layer-row';
+  row.innerHTML = `
+    <span class="layer-tag"></span>
+    <select></select>
+    <button class="remove-layer" type="button">削除</button>
+    <div class="layer-param-row">
+      <span class="layer-param-label">MIX</span>
+      <input class="strength layer-range" type="range" min="0" max="1" step="0.01" value="1">
+      <span class="layer-param-readout mix-readout">100%</span>
+      <span class="layer-param-label" style="margin-left:8px;">Smooth</span>
+      <input class="smooth layer-range" type="range" min="0" max="1" step="0.01" value="0">
+      <span class="layer-param-readout smooth-readout">0%</span>
+    </div>
+  `;
+  const select = row.querySelector('select');
+  for (const item of EFFECTS) {
+    const opt = document.createElement('option');
+    opt.value = item.value;
+    opt.textContent = item.label;
+    select.appendChild(opt);
+  }
+  select.value = value;
+  const strengthSlider = row.querySelector('.strength');
+  strengthSlider.value = clamp(strength ?? 1, 0, 1);
+  const mixReadout = row.querySelector('.mix-readout');
+  const smoothReadout = row.querySelector('.smooth-readout');
+  mixReadout.textContent = Math.round((strength ?? 1) * 100) + '%';
+  strengthSlider.addEventListener('input', () => {
+    mixReadout.textContent = Math.round(parseFloat(strengthSlider.value) * 100) + '%';
+  });
+  row.querySelector('.smooth').addEventListener('input', function() {
+    smoothReadout.textContent = Math.round(parseFloat(this.value) * 100) + '%';
+  });
+  row.querySelector('.remove-layer').onclick = () => {
+    const list = document.getElementById('layerList');
+    if (list.children.length <= 1) return;
+    row.remove();
+    renumberLayers();
+  };
+  return row;
+}
+
+function renumberLayers() {
+  const rows = [...document.querySelectorAll('#layerList .layer-row')];
+  rows.forEach((row, idx) => {
+    row.querySelector('.layer-tag').textContent = `Layer ${idx + 1}`;
+  });
+}
+
+function addLayer(value = 'random', strength = 1) {
+  const list = document.getElementById('layerList');
+  if (list.children.length >= MAX_LAYERS) return;
+  list.appendChild(createLayerRow(value, strength));
+  renumberLayers();
+}
+
+function getSelectedLayers() {
+  return [...document.querySelectorAll('#layerList .layer-row')].map((row, idx) => ({
+    key: row.querySelector('select').value,
+    strength: parseFloat(row.querySelector('.strength').value || '1'),
+    smooth:   parseFloat(row.querySelector('.smooth').value   || '0'),
+    label: `${idx + 1}:${EFFECT_LABELS[row.querySelector('select').value] || row.querySelector('select').value}`
+  }));
+}
+
+function stopPlayback(entry) {
+  if (!entry) return;
+  try { entry.source.stop(); } catch (_) {}
+  if (entry.button) {
+    entry.button.classList.remove('active');
+    entry.button.textContent = '110Hzプレビュー';
+  }
+  if (activePlayback === entry) activePlayback = null;
+}
+
+function addCard(index, wt, overrideLabel) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  const layerText = wt.layers.map(x => x.label).join(' → ');
+  const titleLabel = overrideLabel || `Core:${wt.coreType} | Base:${wt.baseKey} | ${layerText}`;
+  card.innerHTML = `
+    <h3>Vital1024 #${index + 1} <span style='opacity:.6;font-size:11px'>${titleLabel}</span></h3>
+    <canvas class="preview" width="640" height="320"></canvas>
+    <canvas class="spectrum" width="1024" height="64"></canvas>
+    <div class="meta">${wt.depth} frames × 2048 / ${wt.sr} Hz<br>layers: ${wt.layers.length}</div>
+    <div class="actions">
+      <button class="play">110Hzプレビュー</button>
+      <button class="dl">WAVダウンロード</button>
+    </div>
+  `;
+  document.getElementById('grid').appendChild(card);
+  drawPreview(card.querySelector('.preview'), wt.data, wt.depth);
+  drawSpectrum(card.querySelector('.spectrum'), wt.avgAmp);
+
+  const playBtn = card.querySelector('.play');
+  playBtn.onclick = async () => {
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') await ctx.resume();
+    if (activePlayback && activePlayback.button !== playBtn) stopPlayback(activePlayback);
+    if (activePlayback && activePlayback.button === playBtn) { stopPlayback(activePlayback); return; }
+    const buf = ctx.createBuffer(1, wt.data.length, wt.sr);
+    buf.copyToChannel(wt.data, 0);
+    const source = ctx.createBufferSource();
+    source.buffer = buf;
+    source.loop = true;
+    source.playbackRate.value = 110 * 2048 / wt.sr;
+    source.connect(ctx.destination);
+    source.start();
+    activePlayback = { source, button: playBtn };
+    playBtn.classList.add('active');
+    playBtn.textContent = '停止';
+    source.onended = () => {
+      if (activePlayback && activePlayback.source === source) activePlayback = null;
+      playBtn.classList.remove('active');
+      playBtn.textContent = '110Hzプレビュー';
+    };
+  };
+
+  card.querySelector('.dl').onclick = () => {
+    const blob = exportWav(wt.data, wt.sr);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Vital1024_${index + 1}_${wt.sr}hz.wav`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+}
+
+document.getElementById('addLayer').addEventListener('click', () => addLayer('random', 1));
+
+document.getElementById('generate').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  const count = Math.min(20, Math.max(1, parseInt(document.getElementById('count').value || '10', 10)));
+  const seconds = Math.min(10, Math.max(1, parseInt(document.getElementById('seconds').value || '5', 10)));
+  const sr = parseInt(document.getElementById('sr').value, 10);
+  const grid = document.getElementById('grid');
+  const layers = getSelectedLayers();
+  if (activePlayback) stopPlayback(activePlayback);
+  grid.innerHTML = '';
+  btn.disabled = true;
+  btn.textContent = '生成中...';
+  try {
+    for (let i = 0; i < count; i++) {
+      const wt = await generateWavetable(seconds, sr, layers, document.getElementById('baseEffect').value, document.getElementById('coreType').value);
+      addCard(i, wt);
+      await new Promise(r => setTimeout(r, 0));
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '生成';
+  }
+});
+
+// baseEffectにEFFECTSリストを反映
+(function() {
+  const sel = document.getElementById('baseEffect');
+  for (const item of EFFECTS) {
+    const opt = document.createElement('option');
+    opt.value = item.value;
+    opt.textContent = item.label;
+    sel.appendChild(opt);
+  }
+  sel.value = 'random';
+})();
+
+addLayer('warm', 1);
+addLayer('bright', 1);
+document.getElementById('generateFromFile').addEventListener('click', generateFromAudioFile);
+</script>
+</body>
+</html>
