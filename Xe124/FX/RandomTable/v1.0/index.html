@@ -237,8 +237,8 @@
 </head>
 <body>
 <header>
-  <h1>Wavetable 1024</h1>
-  <p class="desc">Vital方式：1024本の倍音を奥行き方向に滑らかにランダム移動。レイヤーは上から順に適用され、各層で「ランダム」を選ぶと実行時に候補から1つ割り当てます。プレビューは110Hz(A2)固定。</p>
+  <h1>Random Table v1.0</h1>
+  <p class="desc">ENDLESS SPECTRAL MORPHING!!</p>
 
   <div class="panel">
     <div class="controls">
@@ -254,21 +254,21 @@
 
     <div class="layers-wrap">
       <div class="layers-head">
-        <div class="layers-title">Base（1枚目レイヤーのエフェクト指定）</div>
+        <div class="layers-title">Base</div>
         <div class="layers-note">ランダムにすると毎回変わります</div>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:#12121a;border:1px solid #242436;border-radius:14px;margin-bottom:6px;">
         <span style="font-size:12px;color:#a78bfa;font-weight:700;min-width:74px;">Core</span>
         <select id="coreType" style="min-width:180px;flex:1 1 180px;">
-          <option value="metaai">MetaAI（オリジナルランダム）</option>
-          <option value="ring">Ring（おでこシワ系うねうね混在）</option>
-          <option value="mountain">Mountain（ギザギザ＋大小うねうね）</option>
-          <option value="acid">Acid（共振フィルタ掃引系）</option>
-          <option value="cathedral">Cathedral（倍音が深く広い残響系）</option>
-          <option value="prism">Prism（高域に向かって密になる虹彩系）</option>
-          <option value="fractal">Fractal（自己相似的なスケール構造）</option>
-          <option value="tension">Tension（不協和音程の引き伸ばし系）</option>
-          <option value="pulse">Pulse（短周期パルス列系）</option>
+          <option value="metaai">MetaAI</option>
+          <option value="ring">Ring</option>
+          <option value="mountain">Mountain</option>
+          <option value="acid">Acid</option>
+          <option value="cathedral">Cathedral</option>
+          <option value="prism">Prism</option>
+          <option value="fractal">Fractal</option>
+          <option value="tension">Tension</option>
+          <option value="pulse">Pulse</option>
         </select>
       </div>
       <div id="baseLayerWrap" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:#12121a;border:1px solid #242436;border-radius:14px;margin-bottom:10px;">
@@ -281,8 +281,8 @@
       </div>
       <div id="layerList" class="layer-list"></div>
       <div class="button-row">
-        <button id="addLayer" type="button">レイヤー追加</button>
-        <button id="generate" type="button">生成</button>
+        <button id="addLayer" type="button">+ FX </button>
+        <button id="generate" type="button">GO</button>
       </div>
       <div class="layers-head" style="margin-top:14px;">
         <div class="layers-title">音声ファイルからWaveTable生成</div>
