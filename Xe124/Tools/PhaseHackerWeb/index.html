@@ -3,13 +3,14 @@
 <head>
 <!-- Playables SDK（変更不要） -->
 <script>!function(){'use strict';if(window.playablesSDK)return;var H='playablesGameEventHandler',A='_MetaPlayablesBridge',T=3,gs=!1,fi=!1,es=!1,fc=0,oR=window.requestAnimationFrame;function iI(){return!!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers[H])}function iA(){return!!(window[A]&&typeof window[A].postEvent==='function')}function iF(){return!!(window.parent&&window.parent!==window)}function sE(n,p){var m={type:n,payload:p||{},timestamp:Date.now()};if(iI()){try{window.webkit.messageHandlers[H].postMessage(m)}catch(e){}return}if(iA()){try{var q=p||{};q.__secureToken=window.__fbAndroidBridgeAuthToken||'';q.timestamp=m.timestamp;window[A].postEvent(n,JSON.stringify(q))}catch(e){}return}if(iF()){try{window.parent.postMessage(m,'*')}catch(e){}}}function oF(){if(gs)return;fc++;if(fc>=T){gs=!0;sE('game_ready',{frame_count:fc,detected_at:Date.now()});return}oR.call(window,oF)}if(oR){window.requestAnimationFrame=function(cb){if(!gs){return oR.call(window,function(ts){fc++;if(fc>=T&&!gs){gs=!0;sE('game_ready',{frame_count:fc,detected_at:Date.now()})}cb(ts)})}return oR.call(window,cb)}}function sI(){var evs=['touchstart','mousedown','keydown'];function h(){if(fi)return;fi=!0;sE('user_interaction_start',null);evs.forEach(function(t){document.removeEventListener(t,h,!0)})}evs.forEach(function(t){document.addEventListener(t,h,!0)})}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',sI);else sI();window.addEventListener('error',function(e){if(es)return;es=!0;sE('error',{message:e.message||'Unknown error',source:e.filename||'',lineno:e.lineno||0,colno:e.colno||0,auto_captured:!0})});window.addEventListener('unhandledrejection',function(e){if(es)return;es=!0;var r=e.reason;sE('error',{message:(r instanceof Error)?r.message:String(r),type:'unhandled_promise_rejection',auto_captured:!0})});window.playablesSDK={complete:function(s){sE('game_ended',{score:s,completed:!0})},error:function(m){if(es)return;es=!0;sE('error',{message:m||'Unknown error',auto_captured:!1})},sendEvent:function(n,p){if(!n||typeof n!=='string')return;sE(n,p)}};if(oR)oR.call(window,oF)}();</script>
+
 <!-- Touch passive patch -->
 <script>!function(){if(window.__playableTouchPatchInstalled)return;window.__playableTouchPatchInstalled=!0;var o=EventTarget.prototype.addEventListener,b={touchstart:1,touchmove:1,wheel:1};EventTarget.prototype.addEventListener=function(t,l,opt){if(b[t]){if(opt===undefined||opt===null)opt={passive:!0};else if(typeof opt==='boolean')opt={capture:opt,passive:!0};else opt=Object.assign({},opt,{passive:!0})}return o.call(this,t,l,opt)}}();</script>
 <script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>HD位相回転ツール – 理想ヒルベルト</title>
+<title>PhaseHackerWeb</title>
 <style>
 /* ===== BASE ===== */
 :root { color-scheme: dark }
