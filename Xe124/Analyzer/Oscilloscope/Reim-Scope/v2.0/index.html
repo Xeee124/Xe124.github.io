@@ -3,9 +3,11 @@
 
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <title>Reim-Scope Zoom</title>
-  <!-- Playables SDK -->
-  <script>// Playables SDK v1.0.0
+
+  <script>
+    // Playables SDK v1.0.0
     // Game lifecycle bridge: rAF-based game-ready detection + event communication
     (function () {
       'use strict';
@@ -193,8 +195,9 @@
       if (originalRAF) {
         originalRAF.call(window, onFrame);
       }
-    })();</script>
-  <!-- PLAYABLE_TOUCH_PATCH_V1 -->
+    })();
+  </script>
+
   <script>
     (function () {
       if (window.__playableTouchPatchInstalled) return;
@@ -215,284 +218,282 @@
       };
     })();
   </script>
-  <script>window.Intl = window.Intl || {}; Intl.t = function (s) { return (Intl._locale && Intl._locale[s]) || s; };</script>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-  <title>Reim-Scope</title>
+
+  <script>
+    window.Intl = window.Intl || {};
+    Intl.t = function (s) { return (Intl._locale && Intl._locale[s]) || s; };
+  </script>
+
   <style>
-  :root {
-    color-scheme: dark;
+    :root {
+      color-scheme: dark;
 
-    /* ─── 全体・キャンバス ─── */
-    --bg-color: #000;
+      /* ─── 全体・キャンバス ─── */
+      --bg-color: #000;
 
-    /* ─── .legend (汎用情報表示) ─── */
-    --legend-top: 10px;
-    --legend-left: 10px;
-    --legend-gap: 14px;
-    --legend-padding: 8px 12px;
-    --legend-bg: rgba(0, 0, 0, 0.55);
-    --legend-border-width: 1px;
-    --legend-border-color: rgba(255, 255, 255, 0.12);
-    --legend-radius: 12px;
-    --legend-blur: 10px;
-    --legend-font-size: 12px;
-    --legend-color: #ddd;
-    --legend-span-gap: 6px;
+      /* ─── .legend (汎用情報表示) ─── */
+      --legend-top: 10px;
+      --legend-left: 10px;
+      --legend-gap: 14px;
+      --legend-padding: 8px 12px;
+      --legend-bg: rgba(0, 0, 0, 0.55);
+      --legend-border-width: 1px;
+      --legend-border-color: rgba(255, 255, 255, 0.12);
+      --legend-radius: 12px;
+      --legend-blur: 10px;
+      --legend-font-size: 12px;
+      --legend-color: #ddd;
+      --legend-span-gap: 6px;
 
-    /* ─── .dot (ステータス丸) ─── */
-    --dot-size: 10px;
-    --dot-glow-blur: 6px;
+      /* ─── .dot (ステータス丸) ─── */
+      --dot-size: 10px;
+      --dot-glow-blur: 6px;
 
-    /* ─── #ui (メインコンテナ) ─── */
-    --ui-left: 10px;
-    --ui-right: 10px;
-    --ui-bottom: 10px;
-    --ui-padding: 12px;
-    --ui-bg: rgba(15, 15, 22, 0.6);
-    --ui-border-width: 1px;
-    --ui-border-color: rgba(255, 255, 255, 0.14);
-    --ui-radius: 16px;
-    --ui-blur: 18px;
-    --ui-saturate: 1.3;
-    --ui-shadow-y: 10px;
-    --ui-shadow-blur: 40px;
-    --ui-shadow-color: rgba(0, 0, 0, 0.6);
+      /* ─── #ui (メインコンテナ) ─── */
+      --ui-left: 10px;
+      --ui-right: 10px;
+      --ui-bottom: 10px;
+      --ui-padding: 12px;
+      --ui-bg: rgba(15, 15, 22, 0.6);
+      --ui-border-width: 1px;
+      --ui-border-color: rgba(255, 255, 255, 0.14);
+      --ui-radius: 16px;
+      --ui-blur: 18px;
+      --ui-saturate: 1.3;
+      --ui-shadow-y: 10px;
+      --ui-shadow-blur: 40px;
+      --ui-shadow-color: rgba(0, 0, 0, 0.6);
 
-    /* ─── .controls (レイアウト) ─── */
-    --controls-gap: 8px;
+      /* ─── .controls (レイアウト) ─── */
+      --controls-gap: 8px;
 
-    /* ─── button (通常) ─── */
-    --btn-border-width: 1px;
-    --btn-border-color: rgba(255, 255, 255, 0.16);
-    --btn-bg: rgba(255, 255, 255, 0.08);
-    --btn-color: #eaf0ff;
-    --btn-padding-y: 10px;
-    --btn-padding-x: 14px;
-    --btn-radius: 12px;
-    --btn-font-size: 14px;
-    --btn-transition-dur: .15s;
-    --btn-active-scale: .97;
-    --btn-active-bg: rgba(255, 255, 255, 0.16);
-    --btn-disabled-opacity: .45;
+      /* ─── button (通常) ─── */
+      --btn-border-width: 1px;
+      --btn-border-color: rgba(255, 255, 255, 0.16);
+      --btn-bg: rgba(255, 255, 255, 0.08);
+      --btn-color: #eaf0ff;
+      --btn-padding-y: 10px;
+      --btn-padding-x: 14px;
+      --btn-radius: 12px;
+      --btn-font-size: 14px;
+      --btn-transition-dur: .15s;
+      --btn-active-scale: .97;
+      --btn-active-bg: rgba(255, 255, 255, 0.16);
+      --btn-disabled-opacity: .45;
 
-    /* ─── button.primary (強調) ─── */
-    --btn-primary-bg: linear-gradient(180deg, rgba(90, 140, 255, .25), rgba(60, 90, 220, .25));
-    --btn-primary-border-color: rgba(120, 160, 255, .45);
+      /* ─── button.primary (強調) ─── */
+      --btn-primary-bg: linear-gradient(180deg, rgba(90, 140, 255, .25), rgba(60, 90, 220, .25));
+      --btn-primary-border-color: rgba(120, 160, 255, .45);
 
-    /* ─── label ─── */
-    --label-gap: 6px;
-    --label-color: #cbd5e1;
-    --label-font-size: 13px;
+      /* ─── label ─── */
+      --label-gap: 6px;
+      --label-color: #cbd5e1;
+      --label-font-size: 13px;
 
-    /* ─── input[type=range] (一括管理・誤差補正) ─── */
-    --slider-width: 120px;
-    --slider-height: 20px;
-    --slider-accent-color: #7aa2ff;
-    --slider-track-bg: rgba(255, 255, 255, 0.2);
-    
-    /* 誤差補正計算用（単位なしの数値のみを入力） */
-    --slider-track-height: 4; 
-    --slider-thumb-size: 14;
+      /* ─── input[type=range] (一括管理・誤差補正) ─── */
+      --slider-width: 120px;
+      --slider-height: 20px;
+      --slider-accent-color: #7aa2ff;
+      --slider-track-bg: rgba(255, 255, 255, 0.2);
+      
+      /* 誤差補正計算用（単位なしの数値のみを入力） */
+      --slider-track-height: 4; 
+      --slider-thumb-size: 14;
 
-    /* ─── #progress (進捗バー外枠) ─── */
-    --progress-left: 12px;
-    --progress-right: 12px;
-    --progress-margin-bottom: 8px;
-    --progress-height: 4px;
-    --progress-bg: rgba(255, 255, 255, .1);
-    --progress-radius: 4px;
+      /* ─── #progress (進捗バー外枠) ─── */
+      --progress-left: 12px;
+      --progress-right: 12px;
+      --progress-margin-bottom: 8px;
+      --progress-height: 4px;
+      --progress-bg: rgba(255, 255, 255, .1);
+      --progress-radius: 4px;
 
-    /* ─── #progressBar (進捗バー中身) ─── */
-    --progress-bar-bg: linear-gradient(90deg, #5df, #7aa2ff);
-    --progress-bar-transition-dur: .1s;
+      /* ─── #progressBar (進捗バー中身) ─── */
+      --progress-bar-bg: linear-gradient(90deg, #5df, #7aa2ff);
+      --progress-bar-transition-dur: .1s;
 
-    /* ─── モバイル対応用 ─── */
-    --btn-padding-y-mobile: 9px;
-    --btn-padding-x-mobile: 11px;
-    --btn-font-size-mobile: 13px;
-    --slider-width-mobile: 90px;
-  }
+      /* ─── モバイル対応用 ─── */
+      --btn-padding-y-mobile: 9px;
+      --btn-padding-x-mobile: 11px;
+      --btn-font-size-mobile: 13px;
+      --slider-width-mobile: 90px;
+    }
 
-  html,
-  body {
-    margin: 0;
-    height: 100%;
-    background: var(--bg-color);
-    overflow: hidden;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif
-  }
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg-color);
+      overflow: hidden;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
+    }
 
-  canvas {
-    position: fixed;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    display: block;
-    background: var(--bg-color)
-  }
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: var(--bg-color);
+    }
 
-  .legend {
-    position: fixed;
-    top: var(--legend-top);
-    left: var(--legend-left);
-    display: flex;
-    gap: var(--legend-gap);
-    padding: var(--legend-padding);
-    background: var(--legend-bg);
-    border: var(--legend-border-width) solid var(--legend-border-color);
-    border-radius: var(--legend-radius);
-    backdrop-filter: blur(var(--legend-blur));
-    font-size: var(--legend-font-size);
-    color: var(--legend-color)
-  }
+    .legend {
+      position: fixed;
+      top: var(--legend-top);
+      left: var(--legend-left);
+      display: flex;
+      gap: var(--legend-gap);
+      padding: var(--legend-padding);
+      background: var(--legend-bg);
+      border: var(--legend-border-width) solid var(--legend-border-color);
+      border-radius: var(--legend-radius);
+      backdrop-filter: blur(var(--legend-blur));
+      font-size: var(--legend-font-size);
+      color: var(--legend-color);
+    }
 
-  .legend span {
-    display: flex;
-    align-items: center;
-    gap: var(--legend-span-gap)
-  }
+    .legend span {
+      display: flex;
+      align-items: center;
+      gap: var(--legend-span-gap);
+    }
 
-  .dot {
-    width: var(--dot-size);
-    height: var(--dot-size);
-    border-radius: 50%;
-    box-shadow: 0 0 var(--dot-glow-blur) currentColor
-  }
+    .dot {
+      width: var(--dot-size);
+      height: var(--dot-size);
+      border-radius: 50%;
+      box-shadow: 0 0 var(--dot-glow-blur) currentColor;
+    }
 
-  #ui {
-    position: fixed;
-    left: var(--ui-left);
-    right: var(--ui-right);
-    bottom: var(--ui-bottom);
-    background: var(--ui-bg);
-    border: var(--ui-border-width) solid var(--ui-border-color);
-    border-radius: var(--ui-radius);
-    padding: var(--ui-padding);
-    backdrop-filter: blur(var(--ui-blur)) saturate(var(--ui-saturate));
-    -webkit-backdrop-filter: blur(var(--ui-blur)) saturate(var(--ui-saturate));
-    box-shadow: 0 var(--ui-shadow-y) var(--ui-shadow-blur) var(--ui-shadow-color)
-  }
+    #ui {
+      position: fixed;
+      left: var(--ui-left);
+      right: var(--ui-right);
+      bottom: var(--ui-bottom);
+      background: var(--ui-bg);
+      border: var(--ui-border-width) solid var(--ui-border-color);
+      border-radius: var(--ui-radius);
+      padding: var(--ui-padding);
+      backdrop-filter: blur(var(--ui-blur)) saturate(var(--ui-saturate));
+      -webkit-backdrop-filter: blur(var(--ui-blur)) saturate(var(--ui-saturate));
+      box-shadow: 0 var(--ui-shadow-y) var(--ui-shadow-blur) var(--ui-shadow-color);
+    }
 
-  .controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--controls-gap);
-    align-items: center
-  }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--controls-gap);
+      align-items: center;
+    }
 
-  button {
-    appearance: none;
-    border: var(--btn-border-width) solid var(--btn-border-color);
-    background: var(--btn-bg);
-    color: var(--btn-color);
-    padding: var(--btn-padding-y) var(--btn-padding-x);
-    border-radius: var(--btn-radius);
-    font-size: var(--btn-font-size);
-    cursor: pointer;
-    touch-action: manipulation;
-    transition: var(--btn-transition-dur)
-  }
-
-  button:active {
-    transform: scale(var(--btn-active-scale));
-    background: var(--btn-active-bg)
-  }
-
-  button.primary {
-    background: var(--btn-primary-bg);
-    border-color: var(--btn-primary-border-color)
-  }
-
-  button:disabled {
-    opacity: var(--btn-disabled-opacity);
-    cursor: not-allowed
-  }
-
-  label {
-    display: flex;
-    align-items: center;
-    gap: var(--label-gap);
-    color: var(--label-color);
-    font-size: var(--label-font-size);
-    user-select: none
-  }
-
-  /* ─── スライダー構造最適化（UI崩れ・カクつき防止） ─── */
-  input[type=range] {
-    width: var(--slider-width);
-    height: var(--slider-height);
-    accent-color: var(--slider-accent-color);
-    -webkit-appearance: none;
-    appearance: none;
-    background: transparent;
-    margin: 0;
-  }
-
-  /* WebKit系トラック */
-  input[type=range]::-webkit-slider-runnable-track {
-    background: var(--slider-track-bg);
-    height: calc(var(--slider-track-height) * 1px);
-    border-radius: calc(var(--slider-track-height) * 1px);
-  }
-
-  /* WebKit系ツマミ（中心位置の誤差補正を自動計算） */
-  input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: calc(var(--slider-thumb-size) * 1px);
-    height: calc(var(--slider-thumb-size) * 1px);
-    border-radius: 50%;
-    background: var(--slider-accent-color);
-    margin-top: calc((var(--slider-track-height) * 0.5px) - (var(--slider-thumb-size) * 0.5px));
-    cursor: pointer;
-  }
-
-  /* Gecko系（Firefox）ツマミ */
-  input[type=range]::-moz-range-thumb {
-    width: calc(var(--slider-thumb-size) * 1px);
-    height: calc(var(--slider-thumb-size) * 1px);
-    border-radius: 50%;
-    background: var(--slider-accent-color);
-    border: none;
-    cursor: pointer;
-  }
-
-  #progress {
-    position: absolute;
-    left: var(--progress-left);
-    right: var(--progress-right);
-    bottom: 100%;
-    margin-bottom: var(--progress-margin-bottom);
-    height: var(--progress-height);
-    background: var(--progress-bg);
-    border-radius: var(--progress-radius);
-    overflow: hidden;
-    display: none
-  }
-
-  #progressBar {
-    height: 100%;
-    width: 0%;
-    background: var(--progress-bar-bg);
-    transition: width var(--progress-bar-transition-dur) linear
-  }
-
-  #fileInput {
-    display: none
-  }
-
-  @media(max-width:600px) {
     button {
-      padding: var(--btn-padding-y-mobile) var(--btn-padding-x-mobile);
-      font-size: var(--btn-font-size-mobile)
+      appearance: none;
+      border: var(--btn-border-width) solid var(--btn-border-color);
+      background: var(--btn-bg);
+      color: var(--btn-color);
+      padding: var(--btn-padding-y) var(--btn-padding-x);
+      border-radius: var(--btn-radius);
+      font-size: var(--btn-font-size);
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: var(--btn-transition-dur);
     }
 
-    input[type=range] {
-      width: var(--slider-width-mobile)
+    button:active {
+      transform: scale(var(--btn-active-scale));
+      background: var(--btn-active-bg);
     }
-  }
-</style>
+
+    button.primary {
+      background: var(--btn-primary-bg);
+      border-color: var(--btn-primary-border-color);
+    }
+
+    button:disabled {
+      opacity: var(--btn-disabled-opacity);
+      cursor: not-allowed;
+    }
+
+    label {
+      display: flex;
+      align-items: center;
+      gap: var(--label-gap);
+      color: var(--label-color);
+      font-size: var(--label-font-size);
+      user-select: none;
+    }
+
+    /* ─── スライダー構造最適化 ─── */
+    input[type=range] {
+      width: var(--slider-width);
+      height: var(--slider-height);
+      accent-color: var(--slider-accent-color);
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      margin: 0;
+    }
+
+    input[type=range]::-webkit-slider-runnable-track {
+      background: var(--slider-track-bg);
+      height: calc(var(--slider-track-height) * 1px);
+      border-radius: calc(var(--slider-track-height) * 1px);
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: calc(var(--slider-thumb-size) * 1px);
+      height: calc(var(--slider-thumb-size) * 1px);
+      border-radius: 50%;
+      background: var(--slider-accent-color);
+      margin-top: calc((var(--slider-track-height) * 0.5px) - (var(--slider-thumb-size) * 0.5px));
+      cursor: pointer;
+    }
+
+    input[type=range]::-moz-range-thumb {
+      width: calc(var(--slider-thumb-size) * 1px);
+      height: calc(var(--slider-thumb-size) * 1px);
+      border-radius: 50%;
+      background: var(--slider-accent-color);
+      border: none;
+      cursor: pointer;
+    }
+
+    #progress {
+      position: absolute;
+      left: var(--progress-left);
+      right: var(--progress-right);
+      bottom: 100%;
+      margin-bottom: var(--progress-margin-bottom);
+      height: var(--progress-height);
+      background: var(--progress-bg);
+      border-radius: var(--progress-radius);
+      overflow: hidden;
+      display: none;
+    }
+
+    #progressBar {
+      height: 100%;
+      width: 0%;
+      background: var(--progress-bar-bg);
+      transition: width var(--progress-bar-transition-dur) linear;
+    }
+
+    #fileInput {
+      display: none;
+    }
+
+    @media(max-width:600px) {
+      button {
+        padding: var(--btn-padding-y-mobile) var(--btn-padding-x-mobile);
+        font-size: var(--btn-font-size-mobile);
+      }
+      input[type=range] {
+        width: var(--slider-width-mobile);
+      }
+    }
+  </style>
 </head>
 
 <body>
@@ -535,6 +536,8 @@
     let timeData = new Float32Array(FFT_N);
     let real = new Float32Array(FFT_N), imag = new Float32Array(FFT_N);
     let realLow = new Float32Array(FFT_LOW), imagLow = new Float32Array(FFT_LOW);
+    let rev, cosTable, sinTable, hannWindow; // 暗黙のグローバル変数を明示的に宣言
+
     let canvas = document.getElementById('scope');
     let ctx = canvas.getContext('2d', { alpha: false });
     let sensitivity = 1.6, mode = 'idle';
@@ -547,19 +550,70 @@
     let isPrecomputing = false;
 
     let fftWorker, workerBusy = false;
-    let workerLow, workerLowBusy = false; // ←追加
+    let workerLow, workerLowBusy = false;
     let lowRing = new Float32Array(FFT_LOW * ZOOM_D);
     let lowPos = 0;
 
     function makeWorker(N) {
       const code = `
-    const N=${N}, L=Math.log2(N);
-    const rev=new Uint32Array(N),c=new Float32Array(N/2),s=new Float32Array(N/2);
-    for(let i=0;i<N;i++){let j=0;for(let k=0;k<L;k++)j=(j<<1)|((i>>k)&1);rev[i]=j;}
-    for(let i=0;i<N/2;i++){const a=-2*Math.PI*i/N;c[i]=Math.cos(a);s[i]=Math.sin(a);}
-    const hann=new Float32Array(N);for(let i=0;i<N;i++)hann[i]=0.5*(1-Math.cos(2*Math.PI*i/(N-1)));
-    function fft(r,i){for(let x=0;x<N;x++){const y=rev[x];if(y>x){[r[x],r[y]]=[r[y],r[x]];[i[x],i[y]]=[i[y],i[x]]}}for(let l=2;l<=N;l<<=1){const h=l>>1,step=N/l;for(let a=0;a<N;a+=l){for(let b=0;b<h;b++){const ur=r[a+b],ui=i[a+b],vr=r[a+b+h],vi=i[a+b+h],k=b*step,wr=c[k],wi=s[k],tr=vr*wr-vi*wi,ti=vr*wi+vi*wr;r[a+b]=ur+tr;i[a+b]=ui+ti;r[a+b+h]=ur-tr;i[a+b+h]=ui-ti;}}}}
-    onmessage=e=>{const t=e.data,r=new Float32Array(N),im=new Float32Array(N);for(let i=0;i<N;i++)r[i]=t[i]*hann[i];fft(r,im);postMessage({r,im},[r.buffer,im.buffer]);}`;
+        const N = ${N}, L = Math.log2(N);
+        const rev = new Uint32Array(N);
+        const c = new Float32Array(N / 2);
+        const s = new Float32Array(N / 2);
+
+        for (let i = 0; i < N; i++) {
+          let j = 0;
+          for (let k = 0; k < L; k++) j = (j << 1) | ((i >> k) & 1);
+          rev[i] = j;
+        }
+
+        for (let i = 0; i < N / 2; i++) {
+          const a = -2 * Math.PI * i / N;
+          c[i] = Math.cos(a);
+          s[i] = Math.sin(a);
+        }
+
+        const hann = new Float32Array(N);
+        for (let i = 0; i < N; i++) {
+          hann[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (N - 1)));
+        }
+
+        function fft(r, i) {
+          for (let x = 0; x < N; x++) {
+            const y = rev[x];
+            if (y > x) {
+              [r[x], r[y]] = [r[y], r[x]];
+              [i[x], i[y]] = [i[y], i[x]];
+            }
+          }
+          for (let l = 2; l <= N; l <<= 1) {
+            const h = l >> 1, step = N / l;
+            for (let a = 0; a < N; a += l) {
+              for (let b = 0; b < h; b++) {
+                const ur = r[a + b], ui = i[a + b];
+                const vr = r[a + b + h], vi = i[a + b + h];
+                const k = b * step;
+                const wr = c[k], wi = s[k];
+                const tr = vr * wr - vi * wi;
+                const ti = vr * wi + vi * wr;
+                r[a + b] = ur + tr;
+                i[a + b] = ui + ti;
+                r[a + b + h] = ur - tr;
+                i[a + b + h] = ui - ti;
+              }
+            }
+          }
+        }
+
+        onmessage = e => {
+          const t = e.data;
+          const r = new Float32Array(N);
+          const im = new Float32Array(N);
+          for (let i = 0; i < N; i++) r[i] = t[i] * hann[i];
+          fft(r, im);
+          postMessage({ r, im }, [r.buffer, im.buffer]);
+        };
+      `;
       return new Worker(URL.createObjectURL(new Blob([code], { type: 'application/javascript' })));
     }
 
@@ -584,19 +638,35 @@
     // ===== 初期化：FFTテーブル事前計算 =====
     function initFFT() {
       rev = new Uint32Array(FFT_N);
-      for (let i = 0; i < FFT_N; i++) { let j = 0; for (let k = 0; k < LOG2_N; k++) j = (j << 1) | ((i >> k) & 1); rev[i] = j; }
+      for (let i = 0; i < FFT_N; i++) {
+        let j = 0;
+        for (let k = 0; k < LOG2_N; k++) j = (j << 1) | ((i >> k) & 1);
+        rev[i] = j;
+      }
       cosTable = new Float32Array(FFT_N / 2);
       sinTable = new Float32Array(FFT_N / 2);
-      for (let i = 0; i < FFT_N / 2; i++) { const a = -2 * Math.PI * i / FFT_N; cosTable[i] = Math.cos(a); sinTable[i] = Math.sin(a); }
+      for (let i = 0; i < FFT_N / 2; i++) {
+        const a = -2 * Math.PI * i / FFT_N;
+        cosTable[i] = Math.cos(a);
+        sinTable[i] = Math.sin(a);
+      }
       hannWindow = new Float32Array(FFT_N);
-      for (let i = 0; i < FFT_N; i++) hannWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (FFT_N - 1)));
+      for (let i = 0; i < FFT_N; i++) {
+        hannWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (FFT_N - 1)));
+      }
     }
 
     // ===== 高速FFT（インプレース） =====
     function fft(re, im) {
       const n = FFT_N;
       // ビットリバース
-      for (let i = 0; i < n; i++) { const j = rev[i]; if (j > i) { let tr = re[i]; re[i] = re[j]; re[j] = tr; let ti = im[i]; im[i] = im[j]; im[j] = ti; } }
+      for (let i = 0; i < n; i++) {
+        const j = rev[i];
+        if (j > i) {
+          let tr = re[i]; re[i] = re[j]; re[j] = tr;
+          let ti = im[i]; im[i] = im[j]; im[j] = ti;
+        }
+      }
       for (let len = 2; len <= n; len <<= 1) {
         const half = len >> 1, step = n / len;
         for (let i = 0; i < n; i += len) {
@@ -605,8 +675,10 @@
             const vR = re[i + j + half], vI = im[i + j + half];
             const k = j * step, wr = cosTable[k], wi = sinTable[k];
             const tR = vR * wr - vI * wi, tI = vR * wi + vI * wr;
-            re[i + j] = uR + tR; im[i + j] = uI + tI;
-            re[i + j + half] = uR - tR; im[i + j + half] = uI - tI;
+            re[i + j] = uR + tR;
+            im[i + j] = uI + tI;
+            re[i + j + half] = uR - tR;
+            im[i + j + half] = uI - tI;
           }
         }
       }
@@ -627,81 +699,131 @@
 
     // 共通クリーンアップ
     function stopCurrent() {
-      if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
-      if (sourceNode) { try { sourceNode.disconnect(); } catch { } if (sourceNode.stop) try { sourceNode.stop(); } catch { } }
-      sourceNode = null; isPlaying = false;
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(t => t.stop());
+        mediaStream = null;
+      }
+      if (sourceNode) {
+        try { sourceNode.disconnect(); } catch { }
+        if (sourceNode.stop) try { sourceNode.stop(); } catch { }
+      }
+      sourceNode = null;
+      isPlaying = false;
     }
 
     // ===== マイク開始 =====
     async function startMic() {
       try {
-        await initAudio(); await audioCtx.resume();
-        stopCurrent(); useCache = false; mode = 'mic';
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, video: false });
+        await initAudio();
+        await audioCtx.resume();
+        stopCurrent();
+        useCache = false;
+        mode = 'mic';
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+          video: false
+        });
         mediaStream = stream;
         sourceNode = audioCtx.createMediaStreamSource(stream);
         sourceNode.connect(analyser);
         gainNode.gain.value = 1;
-      } catch (e) { alert('マイクのアクセスが拒否されました'); console.error(e); }
+      } catch (e) {
+        alert('マイクのアクセスが拒否されました');
+        console.error(e);
+      }
     }
 
     // ===== システム音声開始 =====
     async function startSystem() {
       try {
-        await initAudio(); await audioCtx.resume();
-        stopCurrent(); useCache = false; mode = 'system';
-        const stream = await navigator.mediaDevices.getDisplayMedia({ audio: { echoCancellation: false }, video: true });
-        if (stream.getAudioTracks().length === 0) { alert('システム音声が取得できませんでした'); return; }
+        await initAudio();
+        await audioCtx.resume();
+        stopCurrent();
+        useCache = false;
+        mode = 'system';
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          audio: { echoCancellation: false },
+          video: true
+        });
+        if (stream.getAudioTracks().length === 0) {
+          alert('システム音声が取得できませんでした');
+          return;
+        }
         stream.getVideoTracks().forEach(t => t.stop());
         mediaStream = stream;
         sourceNode = audioCtx.createMediaStreamSource(stream);
         sourceNode.connect(analyser);
         gainNode.gain.value = 0;
-      } catch (e) { alert('システム音声の取得に失敗しました'); console.error(e); }
+      } catch (e) {
+        alert('システム音声の取得に失敗しました');
+        console.error(e);
+      }
     }
 
     // ===== ファイル読み込み =====
     async function loadFile(file) {
       if (!file) return;
       try {
-        await initAudio(); await audioCtx.resume();
-        stopCurrent(); mode = 'file'; useCache = false; preCache = null; pauseOffset = 0;
+        await initAudio();
+        await audioCtx.resume();
+        stopCurrent();
+        mode = 'file';
+        useCache = false;
+        preCache = null;
+        pauseOffset = 0;
         const buf = await file.arrayBuffer();
         audioBuffer = await audioCtx.decodeAudioData(buf);
-        playBtn.disabled = false; preBtn.disabled = false; playBtn.textContent = '再生';
+        playBtn.disabled = false;
+        preBtn.disabled = false;
+        playBtn.textContent = '再生';
         alert('読み込み完了: ' + file.name);
-      } catch (e) { alert('ファイルのデコードに失敗しました'); console.error(e); }
+      } catch (e) {
+        alert('ファイルのデコードに失敗しました');
+        console.error(e);
+      }
     }
 
     // ===== 再生/停止 =====
     async function togglePlay() {
       if (mode !== 'file' || !audioBuffer) return;
-      await initAudio(); await audioCtx.resume();
+      await initAudio();
+      await audioCtx.resume();
       if (isPlaying) {
         try { sourceNode.stop(); } catch { }
         pauseOffset += audioCtx.currentTime - startTime;
-        isPlaying = false; playBtn.textContent = '再生';
+        isPlaying = false;
+        playBtn.textContent = '再生';
       } else {
         sourceNode = audioCtx.createBufferSource();
         sourceNode.buffer = audioBuffer;
         sourceNode.connect(analyser);
-        sourceNode.onended = () => { if (isPlaying) { isPlaying = false; pauseOffset = 0; playBtn.textContent = '再生'; } };
+        sourceNode.onended = () => {
+          if (isPlaying) {
+            isPlaying = false;
+            pauseOffset = 0;
+            playBtn.textContent = '再生';
+          }
+        };
         startTime = audioCtx.currentTime;
         sourceNode.start(0, pauseOffset);
-        isPlaying = true; playBtn.textContent = '停止';
+        isPlaying = true;
+        playBtn.textContent = '停止';
       }
     }
 
     async function precomputeCache() {
       if (!audioBuffer || isPrecomputing) return;
-      isPrecomputing = true; preBtn.disabled = true; playBtn.disabled = true;
-      progress.style.display = 'block'; progressBar.style.width = '0%';
+      isPrecomputing = true;
+      preBtn.disabled = true;
+      playBtn.disabled = true;
+      progress.style.display = 'block';
+      progressBar.style.width = '0%';
 
       const sr = audioBuffer.sampleRate;
       const bw = sr / FFT_N;
-      const bwLow = sr / ZOOM_D / FFT_LOW;
       const bandsDef = [[20, 200, Low_Point_Num], [200, 2000, Mid_Point_Num], [2000, 22050, High_Point_Num]];
       const points = [];
+      
       for (let b = 0; b < bandsDef.length; b++) {
         const [bMin, bMax, cnt] = bandsDef[b];
         const l0 = Math.log10(bMin), l1 = Math.log10(bMax);
@@ -711,6 +833,7 @@
           points.push({ k, f });
         }
       }
+      
       const totalBins = points.length;
       const hop = Math.max(128, Math.floor(sr / 120));
       const totalFrames = Math.max(1, Math.floor((audioBuffer.length - FFT_N) / hop));
@@ -720,14 +843,23 @@
 
       for (let fr = 0; fr < totalFrames; fr++) {
         const off = fr * hop;
-        for (let i = 0; i < FFT_N; i++) tmpR[i] = (ch[off + i] || 0) * hannWindow[i];
+        for (let i = 0; i < FFT_N; i++) {
+          tmpR[i] = (ch[off + i] || 0) * hannWindow[i];
+        }
         tmpI.fill(0);
         fft(tmpR, tmpI);
+        
         const base = fr * totalBins * 2;
         for (let j = 0; j < totalBins; j++) {
           const k = points[j].k;
-          let r = tmpR[k] / (FFT_N / 2); r = Math.max(-1, Math.min(1, r));
-          let im = tmpI[k] / (FFT_N / 2); im = Math.max(-1, Math.min(1, im)); data[base + j * 2] = (r * 127) | 0;
+          
+          let r = tmpR[k] / (FFT_N / 2);
+          r = Math.max(-1, Math.min(1, r));
+          
+          let im = tmpI[k] / (FFT_N / 2);
+          im = Math.max(-1, Math.min(1, im));
+          
+          data[base + j * 2] = (r * 127) | 0;
           data[base + j * 2 + 1] = (im * 127) | 0;
         }
         if ((fr & 31) === 0) {
@@ -735,12 +867,17 @@
           await new Promise(r => setTimeout(r, 0));
         }
       }
+      
       preCache = { sr, hop, points, totalBins, totalFrames, data, bandsDef };
       useCache = true;
-      progressBar.style.width = '100%'; setTimeout(() => progress.style.display = 'none', 300);
-      isPrecomputing = false; preBtn.disabled = false; playBtn.disabled = false;
+      progressBar.style.width = '100%';
+      setTimeout(() => progress.style.display = 'none', 300);
+      isPrecomputing = false;
+      preBtn.disabled = false;
+      playBtn.disabled = false;
       alert('事前解析が完了しました');
     }
+
     // ===== リサイズ =====
     function resize() {
       canvas.width = window.innerWidth;
@@ -752,16 +889,26 @@
     function render() {
       requestAnimationFrame(render);
       const w = canvas.width, h = canvas.height, cx = w / 2, cy = h / 2;
-      ctx.fillStyle = 'rgba(0,0,0,1)'; ctx.fillRect(0, 0, w, h);
-      // トレイル
+
+      // 背景 (トレイル兼用)
       ctx.globalCompositeOperation = 'source-over';
       ctx.fillStyle = 'rgba(0,0,0,1)';
       ctx.fillRect(0, 0, w, h);
+
       // グリッド
-      ctx.save(); ctx.translate(cx, cy);
-      ctx.strokeStyle = 'rgba(80,120,200,0.12)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(-cx, 0); ctx.lineTo(cx, 0); ctx.moveTo(0, -cy); ctx.lineTo(0, cy); ctx.stroke();
-      for (let r = 70; r < Math.max(w, h); r += 70) { ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke(); }
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.strokeStyle = 'rgba(80,120,200,0.12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-cx, 0); ctx.lineTo(cx, 0);
+      ctx.moveTo(0, -cy); ctx.lineTo(0, cy);
+      ctx.stroke();
+      for (let r = 70; r < Math.max(w, h); r += 70) {
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.restore();
 
       const colors = ['rgb(255,0,0)', 'rgb(10,10,255)', 'rgb(0,255,255)'];
@@ -778,17 +925,23 @@
         fIdx = Math.max(0, Math.min(pc.totalFrames - 1, fIdx));
         const base = fIdx * pc.totalBins * 2;
         let maxMag = 1e-6;
+        
         for (let j = 0; j < pc.totalBins; j++) {
-          const r = pc.data[base + j * 2] / 127, im = pc.data[base + j * 2 + 1] / 127;
-          const m = Math.hypot(r, im); if (m > maxMag) maxMag = m;
+          const r = pc.data[base + j * 2] / 127;
+          const im = pc.data[base + j * 2 + 1] / 127;
+          const m = Math.hypot(r, im);
+          if (m > maxMag) maxMag = m;
         }
+        
         let idx = 0;
         for (let b = 0; b < 3; b++) {
           const [bMin, bMax, cnt] = pc.bandsDef[b];
-          ctx.fillStyle = colors[b]; const sz = sizes[b];
-          const l0 = Math.log10(bMin), l1 = Math.log10(bMax);
+          ctx.fillStyle = colors[b];
+          const sz = sizes[b];
+          
           for (let i = 0; i < cnt; i++, idx++) {
-            const r = pc.data[base + idx * 2] / 127, im = pc.data[base + idx * 2 + 1] / 127;
+            const r = pc.data[base + idx * 2] / 127;
+            const im = pc.data[base + idx * 2 + 1] / 127;
             const m = Math.hypot(r, im);
             const f = pc.points[idx].f;
             const norm = (Math.log10(f) - LOG_MIN) / (LOG_MAX - LOG_MIN);
@@ -807,6 +960,7 @@
       if ((mode === 'mic' || mode === 'system') || (mode === 'file' && isPlaying && !useCache)) {
         if (!analyser) return;
         analyser.getFloatTimeDomainData(timeData);
+        
         // 低域Zoom用リングバッファ
         for (let i = 0; i < timeData.length; i++) {
           lowRing[lowPos++] = timeData[i];
@@ -814,13 +968,23 @@
             lowPos = 0;
             const dec = new Float32Array(FFT_LOW);
             for (let j = 0; j < FFT_LOW; j++) dec[j] = lowRing[j * ZOOM_D]; // 8倍間引き
-            if (!workerLowBusy) { workerLowBusy = true; workerLow.postMessage(dec); }
+            if (!workerLowBusy) {
+              workerLowBusy = true;
+              workerLow.postMessage(dec);
+            }
           }
         }
-        if (!workerBusy) { workerBusy = true; fftWorker.postMessage(timeData); }
-        const sr = audioCtx.sampleRate, bw = sr / FFT_N, bwLow = sr / ZOOM_D / FFT_LOW;
+        
+        if (!workerBusy) {
+          workerBusy = true;
+          fftWorker.postMessage(timeData);
+        }
+        
+        const sr = audioCtx.sampleRate;
+        const bw = sr / FFT_N;
+        const bwLow = sr / ZOOM_D / FFT_LOW;
 
-        // 最大値
+        // 最大値取得
         let maxMag = 1e-6;
 
         // 低域
@@ -829,6 +993,7 @@
           const k = Math.max(1, Math.min(Math.round(f / bwLow), FFT_LOW / 2 - 1));
           maxMag = Math.max(maxMag, Math.hypot(realLow[k], imagLow[k]) / (FFT_LOW / 2));
         }
+        
         // 中高域
         for (const [b0, b1, n] of [[200, 2000, Mid_Point_Num], [2000, 22050, High_Point_Num]]) {
           const l0 = Math.log10(b0), l1 = Math.log10(b1);
@@ -843,11 +1008,13 @@
         const drawBand = (bMin, bMax, color, sz, points, useLow = false) => {
           ctx.fillStyle = color;
           const l0 = Math.log10(bMin), l1 = Math.log10(bMax);
+          
           for (let i = 0; i < points; i++) {
             const f = Math.pow(10, l0 + (l1 - l0) * i / points);
             const k = useLow
               ? Math.max(1, Math.min(Math.round(f / bwLow), FFT_LOW / 2 - 1))
               : Math.max(1, Math.min(Math.round(f / bw), FFT_N / 2 - 1));
+              
             const r = useLow ? realLow[k] / (FFT_LOW / 2) : real[k] / (FFT_N / 2);
             const im = useLow ? imagLow[k] / (FFT_LOW / 2) : imag[k] / (FFT_N / 2);
             const m = Math.hypot(r, im);
@@ -855,7 +1022,13 @@
             const baseRadius = 20 + norm * maxR;
             const angle = Math.atan2(im, r);
             const radius = baseRadius * (m / maxMag) * sensitivity;
-            ctx.fillRect(cx + Math.cos(angle) * radius - sz / 2, cy + Math.sin(angle) * radius - sz / 2, sz, sz);
+            
+            ctx.fillRect(
+              cx + Math.cos(angle) * radius - sz / 2,
+              cy + Math.sin(angle) * radius - sz / 2,
+              sz,
+              sz
+            );
           }
         };
 
@@ -875,10 +1048,15 @@
     sensSlider.oninput = e => sensitivity = parseFloat(e.target.value);
 
     // タッチで AudioContext 復帰
-    document.body.addEventListener('touchstart', () => { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }, { passive: true });
+    document.body.addEventListener('touchstart', () => {
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    }, { passive: true });
 
     // 起動
-    initFFT(); initWorkers(); resize(); render();
+    initFFT();
+    initWorkers();
+    resize();
+    render();
   </script>
 </body>
 
