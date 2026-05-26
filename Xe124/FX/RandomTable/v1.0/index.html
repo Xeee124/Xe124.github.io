@@ -243,7 +243,7 @@
   <div class="panel">
     <div class="controls">
       <label>候補数 <input id="count" type="number" min="1" max="20" value="10"></label>
-      <label>秒数 <input id="seconds" type="number" min="1" max="10" value="5"></label>
+      <label>sec <input id="seconds" type="number" min="1" max="10" value="5"></label>
       <label>サンプルレート
         <select id="sr">
           <option value="48000" selected>48000</option>
@@ -307,8 +307,8 @@ let audioCtx = null;
 let activePlayback = null;
 
 const EFFECTS = [
-  { value: 'random', label: 'ランダム' },
-  { value: 'clean', label: 'Clean（エフェクトなし）' },
+  { value: 'random', label: 'Random' },
+  { value: 'clean', label: 'Clean（Bypass）' },
   { value: 'warm', label: 'Warm' },
   { value: 'bright', label: 'Bright' },
   { value: 'dark', label: 'Dark' },
@@ -1530,7 +1530,7 @@ function stopPlayback(entry) {
   try { entry.source.stop(); } catch (_) {}
   if (entry.button) {
     entry.button.classList.remove('active');
-    entry.button.textContent = '110Hzプレビュー';
+    entry.button.textContent = 'Play';
   }
   if (activePlayback === entry) activePlayback = null;
 }
@@ -1546,8 +1546,8 @@ function addCard(index, wt, overrideLabel) {
     <canvas class="spectrum" width="1024" height="64"></canvas>
     <div class="meta">${wt.depth} frames × 2048 / ${wt.sr} Hz<br>layers: ${wt.layers.length}</div>
     <div class="actions">
-      <button class="play">110Hzプレビュー</button>
-      <button class="dl">WAVダウンロード</button>
+      <button class="play">Play</button>
+      <button class="dl">Download</button>
     </div>
   `;
   document.getElementById('grid').appendChild(card);
@@ -1564,17 +1564,17 @@ function addCard(index, wt, overrideLabel) {
     buf.copyToChannel(wt.data, 0);
     const source = ctx.createBufferSource();
     source.buffer = buf;
-    source.loop = true;
-    source.playbackRate.value = 110 * 2048 / wt.sr;
+    source.loop = false;
+    source.playbackRate.value = 87.3070578583 * N / wt.sr;
     source.connect(ctx.destination);
     source.start();
     activePlayback = { source, button: playBtn };
     playBtn.classList.add('active');
-    playBtn.textContent = '停止';
+    playBtn.textContent = 'Stop';
     source.onended = () => {
       if (activePlayback && activePlayback.source === source) activePlayback = null;
       playBtn.classList.remove('active');
-      playBtn.textContent = '110Hzプレビュー';
+      playBtn.textContent = 'Play';
     };
   };
 
