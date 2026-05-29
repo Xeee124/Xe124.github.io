@@ -1,6 +1,216 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+<!-- Playables SDK -->
+<script>// Playables SDK v1.0.0
+// Game lifecycle bridge: rAF-based game-ready detection + event communication
+(function() {
+  'use strict';
+
+  // Idempotency: skip if already initialized (e.g., server-side injection
+  // followed by client-side inject-javascript via the Bloks webview component).
+  if (window.playablesSDK) return;
+
+  var HANDLER_NAME = 'playablesGameEventHandler';
+  var ANDROID_BRIDGE_NAME = '_MetaPlayablesBridge';
+  var RAF_FRAME_THRESHOLD = 3;
+
+  var gameReadySent = false;
+  var firstInteractionSent = false;
+  var errorSent = false;
+  var frameCount = 0;
+  var originalRAF = window.requestAnimationFrame;
+
+  // --- Transport Layer ---
+
+  function hasIOSBridge() {
+    return !!(window.webkit &&
+              window.webkit.messageHandlers &&
+              window.webkit.messageHandlers[HANDLER_NAME]);
+  }
+
+  function hasAndroidBridge() {
+    return !!(window[ANDROID_BRIDGE_NAME] &&
+              typeof window[ANDROID_BRIDGE_NAME].postEvent === 'function');
+  }
+
+  function isInIframe() {
+    return !!(window.parent && window.parent !== window);
+  }
+
+  function sendEvent(eventName, payload) {
+    var message = {
+      type: eventName,
+      payload: payload || {},
+      timestamp: Date.now()
+    };
+
+    if (hasIOSBridge()) {
+      try {
+        window.webkit.messageHandlers[HANDLER_NAME].postMessage(message);
+      } catch (e) { /* ignore */ }
+      return;
+    }
+
+    if (hasAndroidBridge()) {
+    try {
+      var p = payload || {};
+      p.__secureToken = window.__fbAndroidBridgeAuthToken || '';
+      p.timestamp = message.timestamp;
+      window[ANDROID_BRIDGE_NAME].postEvent(
+        eventName,
+        JSON.stringify(p)
+      );
+    } catch (e) { /* ignore */ }
+    return;
+  }
+
+    if (isInIframe()) {
+      try {
+        window.parent.postMessage(message, '*');
+      } catch (e) { /* ignore */ }
+      return;
+    }
+  }
+
+  // --- rAF Game-Ready Detection ---
+
+  function onFrame() {
+    if (gameReadySent) return;
+
+    frameCount++;
+    if (frameCount >= RAF_FRAME_THRESHOLD) {
+      gameReadySent = true;
+      sendEvent('game_ready', {
+        frame_count: frameCount,
+        detected_at: Date.now()
+      });
+      return;
+    }
+
+    originalRAF.call(window, onFrame);
+  }
+
+  if (originalRAF) {
+    window.requestAnimationFrame = function(callback) {
+      if (!gameReadySent) {
+        return originalRAF.call(window, function(timestamp) {
+          frameCount++;
+          if (frameCount >= RAF_FRAME_THRESHOLD && !gameReadySent) {
+            gameReadySent = true;
+            sendEvent('game_ready', {
+              frame_count: frameCount,
+              detected_at: Date.now()
+            });
+          }
+          callback(timestamp);
+        });
+      }
+      return originalRAF.call(window, callback);
+    };
+  }
+
+  // --- First User Interaction Detection ---
+
+  function setupFirstInteractionDetection() {
+    var events = ['touchstart', 'mousedown', 'keydown'];
+
+    function onFirstInteraction() {
+      if (firstInteractionSent) return;
+      firstInteractionSent = true;
+      sendEvent('user_interaction_start', null);
+
+      for (var i = 0; i < events.length; i++) {
+        document.removeEventListener(events[i], onFirstInteraction, true);
+      }
+    }
+
+    for (var i = 0; i < events.length; i++) {
+      document.addEventListener(events[i], onFirstInteraction, true);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupFirstInteractionDetection);
+  } else {
+    setupFirstInteractionDetection();
+  }
+
+  // --- Auto Error Capture ---
+
+  window.addEventListener('error', function(event) {
+    if (errorSent) return;
+    errorSent = true;
+    sendEvent('error', {
+      message: event.message || 'Unknown error',
+      source: event.filename || '',
+      lineno: event.lineno || 0,
+      colno: event.colno || 0,
+      auto_captured: true
+    });
+  });
+
+  window.addEventListener('unhandledrejection', function(event) {
+    if (errorSent) return;
+    errorSent = true;
+    var reason = event.reason;
+    sendEvent('error', {
+      message: (reason instanceof Error) ? reason.message : String(reason),
+      type: 'unhandled_promise_rejection',
+      auto_captured: true
+    });
+  });
+
+  // --- Public API ---
+
+  window.playablesSDK = {
+    complete: function(score) {
+      sendEvent('game_ended', {
+        score: score,
+        completed: true
+      });
+    },
+
+    error: function(message) {
+      if (errorSent) return;
+      errorSent = true;
+      sendEvent('error', {
+        message: message || 'Unknown error',
+        auto_captured: false
+      });
+    },
+
+    sendEvent: function(eventName, payload) {
+      if (!eventName || typeof eventName !== 'string') return;
+      sendEvent(eventName, payload);
+    }
+  };
+
+  // Kick off rAF detection in case no game code calls rAF immediately
+  if (originalRAF) {
+    originalRAF.call(window, onFrame);
+  }
+})();</script>
+<!-- PLAYABLE_TOUCH_PATCH_V1 --><script>
+(function() {
+  if (window.__playableTouchPatchInstalled) return;
+  window.__playableTouchPatchInstalled = true;
+  var origAdd = EventTarget.prototype.addEventListener;
+  var blockedTypes = { touchstart: 1, touchmove: 1, wheel: 1 };
+  EventTarget.prototype.addEventListener = function(type, listener, options) {
+    if (blockedTypes[type]) {
+      if (options === undefined || options === null) {
+        options = { passive: true };
+      } else if (typeof options === 'boolean') {
+        options = { capture: options, passive: true };
+      } else {
+        options = Object.assign({}, options, { passive: true });
+      }
+    }
+    return origAdd.call(this, type, listener, options);
+  };
+})();
+</script><script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>FFT WASM Evolver</title>
@@ -113,7 +323,8 @@
 
     function logLine(...args) {
       const s = args.map(v => typeof v === 'string' ? v : String(v)).join(' ');
-      el.log.textContent += s + '\n';
+      el.log.textContent += s + '
+';
       if (el.log.textContent.length > MAX_LOG) el.log.textContent = el.log.textContent.slice(-MAX_LOG);
       el.log.scrollTop = el.log.scrollHeight;
     }
@@ -301,7 +512,7 @@
     function bytesToWatString(bytes) {
       let s = '';
       for (let i = 0; i < bytes.length; i++) {
-        s += '\\' + bytes[i].toString(16).padStart(2, '0');
+        s += '\' + bytes[i].toString(16).padStart(2, '0');
       }
       return '"' + s + '"';
     }
@@ -525,22 +736,22 @@
       push('                local.set $twIdx');
       push('                global.get $TWPTR');
       push('                local.get $twIdx');
-      push(f'                i32.const {complexShift}');
+      push(`                i32.const ${complexShift}`);
       push('                i32.shl');
       push('                i32.add');
       push('                local.set $addr0');
       push('                local.get $addr0');
-      push(f'                {load}');
+      push(`                ${load}`);
       push('                local.set $wr');
       push('                local.get $addr0');
-      push(f'                i32.const {type == "f32" and 4 or 8}');
+      push(`                i32.const ${type === "f32" ? 4 : 8}`);
       push('                i32.add');
-      push(f'                {load}');
+      push(`                ${load}`);
       push('                local.set $wi');
       push('                local.get $k');
       push('                local.get $j');
       push('                i32.add');
-      push(f'                i32.const {elemShift}');
+      push(`                i32.const ${elemShift}`);
       push('                i32.shl');
       push('                local.set $addr0');
       push('                local.get $k');
@@ -548,7 +759,7 @@
       push('                i32.add');
       push('                local.get $half');
       push('                i32.add');
-      push(f'                i32.const {elemShift}');
+      push(`                i32.const ${elemShift}`);
       push('                i32.shl');
       push('                local.set $addr1');
       push('                local.get $re');
@@ -568,53 +779,53 @@
       push('                i32.add');
       push('                local.set $addr1');
       push('                local.get $addr2');
-      push(f'                {load}');
+      push(`                ${load}`);
       push('                local.set $ur');
       push('                local.get $addr3');
-      push(f'                {load}');
+      push(`                ${load}`);
       push('                local.set $ui');
       push('                local.get $addr0');
-      push(f'                {load}');
+      push(`                ${load}`);
       push('                local.set $vr');
       push('                local.get $addr1');
-      push(f'                {load}');
+      push(`                ${load}`);
       push('                local.set $vi');
       push('                local.get $vr');
       push('                local.get $wr');
-      push(f'                {mul}');
+      push(`                ${mul}`);
       push('                local.get $vi');
       push('                local.get $wi');
-      push(f'                {mul}');
-      push(f'                {sub}');
+      push(`                ${mul}`);
+      push(`                ${sub}`);
       push('                local.set $tr');
       push('                local.get $vr');
       push('                local.get $wi');
-      push(f'                {mul}');
+      push(`                ${mul}`);
       push('                local.get $vi');
       push('                local.get $wr');
-      push(f'                {mul}');
-      push(f'                {add}');
+      push(`                ${mul}`);
+      push(`                ${add}`);
       push('                local.set $ti');
       push('                local.get $addr2');
       push('                local.get $ur');
       push('                local.get $tr');
-      push(f'                {add}');
-      push(f'                {store}');
+      push(`                ${add}`);
+      push(`                ${store}`);
       push('                local.get $addr3');
       push('                local.get $ui');
       push('                local.get $ti');
-      push(f'                {add}');
-      push(f'                {store}');
+      push(`                ${add}`);
+      push(`                ${store}`);
       push('                local.get $addr0');
       push('                local.get $ur');
       push('                local.get $tr');
-      push(f'                {sub}');
-      push(f'                {store}');
+      push(`                ${sub}`);
+      push(`                ${store}`);
       push('                local.get $addr1');
       push('                local.get $ui');
       push('                local.get $ti');
-      push(f'                {sub}');
-      push(f'                {store}');
+      push(`                ${sub}`);
+      push(`                ${store}`);
       push('                local.get $j');
       push('                i32.const 1');
       push('                i32.add');
@@ -640,7 +851,8 @@
       push('');
       push(`  (data (i32.const ${twPtr}) ${twData})`);
       push(')');
-      return lines.join('\n');
+      return lines.join('
+');
     }
 
     function writeInputToMemory(mem, re, im, type) {
@@ -733,18 +945,22 @@
       ctx.fillText(`max=${maxV.toExponential(2)}`, 10, 16);
     }
 
-    async function compileAndRunCandidate(n, type, cand, baseInput, ref) {
+    async function runCandidate(baseModule, n, type, cand, baseInput, ref) {
       const tw = twiddleTable(n, type, cand);
-      const twBytes = toWatBytes(tw, type);
-      const wat = watForCandidate(n, type, cand, twBytes);
-      const t0 = performance.now();
-      const mod = wabt.parseWat('fft_evolver.wat', wat);
-      const bin = mod.toBinary({ log: false, write_debug_names: true });
-      const compileMs = performance.now() - t0;
-      const instance = await WebAssembly.instantiate(bin.buffer, {});
-      const exports = instance.instance ? instance.instance.exports : instance.exports;
+      const instance = await WebAssembly.instantiate(baseModule, {});
+      const exports = instance.exports;
       const mem = exports.memory;
       const fft = exports.fft;
+      const elemBytes = type === 'f32' ? 4 : 8;
+      const rePtr = 0;
+      const imPtr = n * elemBytes;
+      const twPtr = imPtr + n * elemBytes;
+      // write twiddle table once per candidate
+      const dv = new DataView(mem.buffer);
+      for (let i = 0; i < tw.length; i++) {
+        if (type === 'f32') dv.setFloat32(twPtr + i*4, tw[i], true);
+        else dv.setFloat64(twPtr + i*8, tw[i], true);
+      }
       const ptrs = writeInputToMemory(mem, baseInput.re, baseInput.im, type);
       const runTimes = [];
       let out = null;
@@ -756,9 +972,9 @@
         runTimes.push(rt1 - rt0);
         out = readOutput(mem, n, type);
       }
-      const avgRun = runTimes.reduce((a, b) => a + b, 0) / runTimes.length;
+      const avgRun = runTimes.reduce((a,b)=>a+b,0)/runTimes.length;
       const err = rmseCompared(out.re, out.im, ref.re, ref.im);
-      return { compileMs, avgRun, ...err, binaryBytes: bin.buffer.byteLength };
+      return { compileMs: 0, avgRun, ...err, binaryBytes: baseModule.byteLength || 0 };
     }
 
     function shouldAccept(next, best, mode) {
@@ -802,16 +1018,34 @@
       logLine(`START N=${n} type=${type}`);
       logLine(`seed elite: ${candidateLabel(elite)}`);
 
+      // load wasm from same folder, fallback to compile
+      setState('wasm load', 'ok');
+      let baseModule;
+      try {
+        const resp = await fetch('./fft_base.wasm');
+        if (!resp.ok) throw new Error('HTTP '+resp.status);
+        baseModule = await resp.arrayBuffer();
+        logLine(`loaded fft_base.wasm: ${(baseModule.byteLength/1024).toFixed(1)}KB`);
+      } catch (e) {
+        logLine(`fetch failed (${e.message}), compiling in-browser...`);
+        if (!wabt) wabt = await WABT();
+        const baseWat = watBase(n, type);
+        const mod = wabt.parseWat('fft_base.wat', baseWat);
+        const bin = mod.toBinary({ log: false });
+        baseModule = bin.buffer;
+        logLine(`base wasm compiled: ${(baseModule.byteLength/1024).toFixed(1)}KB`);
+      }
+
       while (running) {
         generation++;
         const child = mutateCandidate(elite, n, type, mode);
         el.candInfo.textContent = `trial: ${candidateLabel(child)}`;
         setState('compile', 'ok');
         try {
-          const result = await compileAndRunCandidate(n, type, child, baseInput, ref);
+          const result = await runCandidate(baseModule, n, type, child, baseInput, ref);
           const record = { gen: generation, cmp: result.compileMs, run: result.avgRun, err: result.nrmse, cand: child, binaryBytes: result.binaryBytes };
           history.push(record);
-          logLine(`gen ${generation} | cmp=${result.compileMs.toFixed(1)}ms | run=${result.avgRun.toFixed(4)}ms | nrmse=${result.nrmse.toExponential(3)} | size=${(result.binaryBytes / 1024 / 1024).toFixed(2)}MB | ${candidateLabel(child)}`);
+          logLine(`gen ${generation} | run=${result.avgRun.toFixed(4)}ms | nrmse=${result.nrmse.toExponential(3)} | ${candidateLabel(child)}`);
           if (shouldAccept(record, elite, mode)) {
             elite = { ...child, cmp: record.cmp, run: record.run, err: record.err, binaryBytes: record.binaryBytes };
             setState('accept', 'ok');
