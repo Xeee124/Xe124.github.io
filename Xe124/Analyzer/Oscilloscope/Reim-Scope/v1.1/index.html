@@ -26,7 +26,7 @@
       /* スライダー全体の反応領域の高さ */
 
       /* 全体背景・文字・UIコンポーネント */
-      --bg-color: rgb(20, 20, 20);
+      --bg-color: #000;
       /* アプリ全体の背景色 */
       --text-main: rgb(255, 255, 255);
       /* 主要な文字色（ボタンなど） */
@@ -62,8 +62,8 @@
     #scope {
       position: fixed;
       inset: 0;
-      width: 100vw;
-      height: 100vh;
+      width: 100%;
+      height: 100%;
       display: block;
       pointer-events: none;
     }
@@ -71,7 +71,6 @@
     #bg {
       z-index: 1;
       background: var(--bg-color);
-      filter: blur(0.5px);
     }
 
     #scope {
@@ -664,6 +663,7 @@
       playBtn.disabled = true;
       if (progress) progress.style.display = 'block';
       if (progressBar) progressBar.style.width = '0%';
+      try {
       const sr = audioBuffer.sampleRate;
       const bw = sr / FFT_N;
       const bandsDef = [[20, 200, Low_Point_Num], [200, 2000, Mid_Point_Num], [2000, 22050, High_Point_Num]];
@@ -678,7 +678,7 @@
         }
       }
       const totalBins = points.length;
-      const hop = Math.max(128, Math.floor(sr / fftRate));
+      const hop = Math.max(128, Math.floor(sr / 120)); // v1.0の固定値に戻す
       const totalFrames = Math.max(1, Math.floor((audioBuffer.length - FFT_N) / hop));
       const data = new Float64Array(totalFrames * totalBins * 2);
       const ch = audioBuffer.getChannelData(0);
@@ -711,40 +711,52 @@
       useCache = true;
       if (progressBar) progressBar.style.width = '100%';
       if (progress) setTimeout(() => progress.style.display = 'none', 300);
+      alert('事前解析が完了しました');
+      } catch(e) {
+        console.error(e);
+        alert('事前解析に失敗しました: ' + e.message);
+      } finally {
       isPrecomputing = false;
       preBtn.disabled = false;
       playBtn.disabled = false;
-      alert('事前解析が完了しました');
+      }
     }
 
     // ===== リサイズ =====
     function resize() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      bg.width = window.innerWidth;
-      bg.height = window.innerHeight;
+      const dpr = window.devicePixelRatio || 1;
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      [canvas, bg].forEach(c => {
+        c.width = Math.round(w * dpr);
+        c.height = Math.round(h * dpr);
+        c.style.width = w + 'px';
+        c.style.height = h + 'px';
+        const ctx2 = c.getContext('2d');
+        ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+      });
       drawGrid();
     }
     function drawGrid() {
-      const w = bg.width, h = bg.height, cx = w / 2, cy = h / 2;
-      bgCtx.fillStyle = 'rgb(20, 20, 20)'; bgCtx.fillRect(0, 0, w, h);
-      bgCtx.strokeStyle = 'rgba(100,140,200,0.23)'; bgCtx.lineWidth = 3;
+      const w = window.innerWidth, h = window.innerHeight, cx = w / 2, cy = h / 2;
+      bgCtx.save();
+      bgCtx.setTransform(1,0,0,1,0,0);
+      bgCtx.fillStyle = '#000'; bgCtx.fillRect(0, 0, bg.width, bg.height);
+      bgCtx.restore();
+      bgCtx.strokeStyle = 'rgba(80,120,200,0.12)'; bgCtx.lineWidth = 1;
       bgCtx.beginPath(); bgCtx.moveTo(cx, 0); bgCtx.lineTo(cx, h); bgCtx.moveTo(0, cy); bgCtx.lineTo(w, cy); bgCtx.stroke();
       for (let r = 70; r < Math.max(w, h); r += 70) { bgCtx.beginPath(); bgCtx.arc(cx, cy, r, 0, Math.PI * 2); bgCtx.stroke(); }
     }
     // ===== レンダリング =====
     function render() {
       requestAnimationFrame(render);
-      const w = canvas.width, h = canvas.height, cx = w / 2, cy = h / 2;
+      const w = window.innerWidth, h = window.innerHeight, cx = w / 2, cy = h / 2;
 
-      // トレイル
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.fillStyle = 'rgba(30,30,30,' + trailAmount + ')';
-      ctx.fillRect(0, 0, w, h);
-      ctx.globalCompositeOperation = 'source-over';
+      // トレイル - v1.0の挙動に戻す（完全クリア）
+      ctx.clearRect(0, 0, w, h);
 
 
-      const colors = ['rgb(255,0,0)', 'rgb(30,30,255)', 'rgb(0,255,255)'];
+      const colors = ['rgb(255,0,0)', 'rgb(10,10,255)', 'rgb(0,255,255)'];
       const sizes = [Low_Point_Size, Mid_Point_Size, High_Point_Size];
       const LOG_MIN = Math.log10(20);
       const LOG_MAX = Math.log10(22050);
@@ -779,7 +791,9 @@
             const radius = baseRadius * (m / maxMag);
             const x = cx + Math.cos(angle) * radius * sensitivity;
             const y = cy + Math.sin(angle) * radius * sensitivity;
-            ctx.fillRect(x - sz / 2, y - sz / 2, sz, sz);
+            ctx.beginPath();
+            ctx.arc(x, y, sz / 2, 0, Math.PI * 2);
+            ctx.fill();
           }
         }
         return;
@@ -836,7 +850,9 @@
             // 振幅を反映
             const x = cx + Math.cos(angle) * radius * sensitivity;
             const y = cy + Math.sin(angle) * radius * sensitivity;
-            ctx.fillRect(x - sz / 2, y - sz / 2, sz, sz);
+            ctx.beginPath();
+            ctx.arc(x, y, sz / 2, 0, Math.PI * 2);
+            ctx.fill();
           }
         };
 
