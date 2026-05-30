@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head><!-- PLAYABLE_TOUCH_PATCH_V1 --><script>
+(function() {
+  if (window.__playableTouchPatchInstalled) return;
+  window.__playableTouchPatchInstalled = true;
+  var origAdd = EventTarget.prototype.addEventListener;
+  var blockedTypes = { touchstart: 1, touchmove: 1, wheel: 1 };
+  EventTarget.prototype.addEventListener = function(type, listener, options) {
+    if (blockedTypes[type]) {
+      if (options === undefined || options === null) {
+        options = { passive: true };
+      } else if (typeof options === 'boolean') {
+        options = { capture: options, passive: true };
+      } else {
+        options = Object.assign({}, options, { passive: true });
+      }
+    }
+    return origAdd.call(this, type, listener, options);
+  };
+})();
+</script><script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
+<script>// Playables SDK v1.0.0
+(function(){'use strict';if(window.playablesSDK)return;var n='playablesGameEventHandler',e='_MetaPlayablesBridge',t=3,o=!1,i=!1,r=!1,a=0,s=window.requestAnimationFrame;function d(){return!!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers[n])}function c(){return!!(window[e]&&typeof window[e].postEvent=='function')}function l(){return!!(window.parent&&window.parent!==window)}function u(t,o){var i={type:t,payload:o||{},timestamp:Date.now()};if(d()){try{window.webkit.messageHandlers[n].postMessage(i)}catch(e){}return}if(c()){try{var r=o||{};r.__secureToken=window.__fbAndroidBridgeAuthToken||'';r.timestamp=i.timestamp;window[e].postEvent(t,JSON.stringify(r))}catch(e){}return}if(l()){try{window.parent.postMessage(i,'*')}catch(e){}return}}function f(){if(o)return;a++;if(a>=t){o=!0;u('game_ready',{frame_count:a,detected_at:Date.now()});return}s.call(window,f)}if(s){window.requestAnimationFrame=function(e){if(!o){return s.call(window,function(t){a++;if(a>=t&&!o){o=!0;u('game_ready',{frame_count:a,detected_at:Date.now()})}e(t)})}return s.call(window,e)}}function p(){var e=['touchstart','mousedown','keydown'];function t(){if(i)return;i=!0;u('user_interaction_start',null);for(var o=0;o<e.length;o++)document.removeEventListener(e[o],t,!0)}for(var o=0;o<e.length;o++)document.addEventListener(e[o],t,!0)}document.readyState==='loading'?document.addEventListener('DOMContentLoaded',p):p();window.addEventListener('error',function(e){if(r)return;r=!0;u('error',{message:e.message||'Unknown error',source:e.filename||'',lineno:e.lineno||0,colno:e.colno||0,auto_captured:!0})});window.addEventListener('unhandledrejection',function(e){if(r)return;r=!0;var t=e.reason;u('error',{message:t instanceof Error?t.message:String(t),type:'unhandled_promise_rejection',auto_captured:!0})});window.playablesSDK={complete:function(e){u('game_ended',{score:e,completed:!0})},error:function(e){if(r)return;r=!0;u('error',{message:e||'Unknown error',auto_captured:!1})},sendEvent:function(e,t){if(!e||typeof e!=='string')return;u(e,t)}};if(s)s.call(window,f)})();</script>
+<script>(function(){if(window.__playableTouchPatchInstalled)return;window.__playableTouchPatchInstalled=!0;var e=EventTarget.prototype.addEventListener,t={touchstart:1,touchmove:1,wheel:1};EventTarget.prototype.addEventListener=function(o,i,r){if(t[o]){if(r===void 0||r===null)r={passive:!0};else if(typeof r=='boolean')r={capture:r,passive:!0};else r=Object.assign({},r,{passive:!0})}return e.call(this,o,i,r)}})();</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>リアルタイム音響定位ビジュアライザ</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0a0a0c;color:#e6e6ef;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif}
+header{position:sticky;top:0;z-index:20;background:#0f0f14cc;backdrop-filter:blur(10px);border-bottom:1px solid #1c1c24;padding:10px 14px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{background:#1f1f29;border:1px solid #2a2a38;color:#fff;padding:8px 14px;border-radius:12px;font-size:14px;cursor:pointer;transition:.15s}
+button:hover:not(:disabled){background:#2a2a38;transform:translateY(-1px)}button:active:not(:disabled){transform:translateY(0)}
+button.primary{background:#6d28d9;border-color:#7c3aed}button.active{background:#4c1d95;border-color:#8b5cf6;box-shadow:0 0 0 2px #8b5cf633}button:disabled{opacity:.45;cursor:not-allowed}
+input[type=file]{display:none}label.chk{display:flex;align-items:center;gap:6px;font-size:12px;padding:6px 10px;background:#14141c;border:1px solid #242432;border-radius:10px}
+.sliders{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:#b4b4c3}.sliders label{display:flex;align-items:center;gap:6px}input[type=range]{width:120px;accent-color:#8b5cf6}.info{margin-left:auto;display:flex;gap:12px;opacity:.8}
+main{position:relative}canvas{display:block;width:100%;height:400px;background:radial-gradient(ellipse at center,#12121a 0%,#0a0a0c 65%)}
+.legend{position:absolute;pointer-events:none;font-size:11px;color:#9a9ab0;text-shadow:0 1px 2px #000}
+.legend.left{left:10px;bottom:8px}.legend.right{right:10px;bottom:8px}.legend.center{left:50%;top:8px;transform:translateX(-50%);background:#0a0a0ccc;padding:2px 8px;border-radius:6px;border:1px solid #22222e}
+.legend.hue{right:10px;top:8px;display:flex;align-items:center;gap:6px;background:#0a0a0ccc;padding:4px 8px;border-radius:8px;border:1px solid #22222e}
+.huebar{width:90px;height:8px;border-radius:4px;background:linear-gradient(90deg,hsl(0,100%,55%),hsl(60,100%,55%),hsl(120,100%,55%),hsl(180,100%,55%),hsl(240,100%,55%),hsl(270,100%,55%));box-shadow:inset 0 0 0 1px #0008}
+footer{padding:8px 14px;font-size:11px;color:#717184;border-top:1px solid #18181f}
+@media(max-width:640px){canvas{height:320px}input[type=range]{width:90px}.info{display:none}}
+</style>
+</head>
+<body>
+<header>
+<div class="row">
+<button id="btnFile" class="primary">ファイルを選択</button><input id="fileInput" type="file" accept="audio/*">
+<button id="btnMic">マイク</button><button id="btnSystem">システム音声</button><button id="btnStop" disabled>停止</button>
+<label class="chk"><input id="muteSystem" type="checkbox" checked> システム音声時は出力をミュート</label>
+</div>
+<div class="sliders">
+<label>感度 <input id="sens" type="range" min="-90" max="-30" value="-72" step="1"> <span id="sensVal">-72 dB</span></label>
+<label>ノイズフロア基準 <input id="nfBase" type="range" min="-100" max="-50" value="-90" step="1"> <span id="nfVal">-90 dB</span></label>
+<div class="info"><span>SR: <b id="sr">-</b> Hz</span><span>HSV:20Hz-20kHz</span></div>
+</div>
+</header>
+<main><canvas id="viz"></canvas><div class="legend left">左</div><div class="legend right">右</div><div class="legend center">中央 = モノラル</div><div class="legend hue"><span>赤(低)</span><div class="huebar"></div><span>紫(高)</span></div></main>
+<footer>左端=完全L / 中央=モノ / 右端=完全R</footer>
+<script>
+const Hsv_LowEdge=20,Hsv_HighEdge=20000;let hSv_max=-30,hSv_min=-90,hsA_max=-6,hsA_min=-72;
+const canvas=document.getElementById('viz'),ctx=canvas.getContext('2d',{alpha:false});
+const topCanvas=document.createElement('canvas'),topCtx=topCanvas.getContext('2d',{alpha:false});
+const btnFile=document.getElementById('btnFile'),fileInput=document.getElementById('fileInput'),btnMic=document.getElementById('btnMic'),btnSystem=document.getElementById('btnSystem'),btnStop=document.getElementById('btnStop'),muteSystem=document.getElementById('muteSystem');
+const sens=document.getElementById('sens'),sensVal=document.getElementById('sensVal'),nfBase=document.getElementById('nfBase'),nfVal=document.getElementById('nfVal'),srEl=document.getElementById('sr');
+let audioCtx,splitter,analyserL,analyserR,gainNode,sourceNode=null,mediaStream=null,dataL,dataR,isPlaying=!1,rafId=0;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),log10=x=>Math.log(x)/Math.LN10;
+function hsv2rgb(h,s,v){const i=Math.floor(h*6),f=h*6-i,p=v*(1-s),q=v*(1-f*s),t=v*(1-(1-f)*s);let r,g,b;switch(i%6){case 0:r=v;g=t;b=p;break;case 1:r=q;g=v;b=p;break;case 2:r=p;g=v;b=t;break;case 3:r=p;g=q;b=v;break;case 4:r=t;g=p;b=v;break;case 5:r=v;g=p;b=q;break}return[r*255|0,g*255|0,b*255|0]}
+const dbToLin=db=>Math.pow(10,db/20);
+function resetUI(){btnFile.textContent='ファイルを選択';btnMic.textContent='マイク';btnSystem.textContent='システム音声';[btnFile,btnMic,btnSystem].forEach(b=>{b.disabled=!1;b.classList.remove('active')});btnStop.disabled=!0}
+function setActive(t,l){resetUI();btnStop.disabled=!1;if(t==='file'){btnFile.classList.add('active');btnFile.textContent='■ '+(l.length>18?l.slice(0,17)+'…':l);btnMic.disabled=btnSystem.disabled=!0}else if(t==='mic'){btnMic.classList.add('active');btnMic.textContent='● マイク中';btnFile.disabled=btnSystem.disabled=!0}else if(t==='system'){btnSystem.classList.add('active');btnSystem.textContent='● システム音声中';btnFile.disabled=btnMic.disabled=!0}}
+resetUI();
+function resize(){const r=canvas.getBoundingClientRect(),w=Math.max(10,Math.floor(r.width)),h=Math.max(200,Math.floor(r.height)),d=Math.min(window.devicePixelRatio||1,2);if(canvas.width!==w*d||canvas.height!==h*d){canvas.width=w*d;canvas.height=h*d;ctx.setTransform(d,0,0,d,0,0);topCanvas.width=w*d;topCanvas.height=Math.floor(h/2*d);topCtx.setTransform(d,0,0,d,0,0)}}
+const ro=new ResizeObserver(resize);ro.observe(document.querySelector('main'));addEventListener('resize',resize);addEventListener('orientationchange',()=>setTimeout(resize,200));setTimeout(resize,0);
+async function initAudio(){if(audioCtx)return;audioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:48000});await audioCtx.resume();splitter=audioCtx.createChannelSplitter(2);analyserL=audioCtx.createAnalyser();analyserR=audioCtx.createAnalyser();analyserL.fftSize=analyserR.fftSize=4096;analyserL.smoothingTimeConstant=analyserR.smoothingTimeConstant=.12;splitter.connect(analyserL,0);splitter.connect(analyserR,1);gainNode=audioCtx.createGain();gainNode.connect(audioCtx.destination);dataL=new Float32Array(analyserL.frequencyBinCount);dataR=new Float32Array(analyserR.frequencyBinCount);srEl.textContent=audioCtx.sampleRate}
+function connectSource(n,m,t,l){disconnectAll(!1);sourceNode=n;n.connect(splitter);gainNode.gain.value=m?0:1;if(!m)try{n.connect(gainNode)}catch{}isPlaying=!0;setActive(t,l);if(!rafId)render()}
+function disconnectAll(r=!0){isPlaying=!1;if(rafId){cancelAnimationFrame(rafId);rafId=0}if(sourceNode){try{sourceNode.disconnect()}catch{};if(sourceNode.stop)try{sourceNode.stop()}catch{}sourceNode=null}if(mediaStream){mediaStream.getTracks().forEach(t=>t.stop());mediaStream=null}ctx.clearRect(0,0,canvas.width,canvas.height);topCtx.clearRect(0,0,topCanvas.width,topCanvas.height);if(r)resetUI()}
+btnFile.onclick=()=>fileInput.click();
+fileInput.onchange=async e=>{const f=e.target.files[0];if(!f)return;await initAudio();const b=await f.arrayBuffer(),a=await audioCtx.decodeAudioData(b),s=audioCtx.createBufferSource();s.buffer=a;s.loop=!0;connectSource(s,!1,'file',f.name);s.start(0)};
+btnMic.onclick=async()=>{try{await initAudio();mediaStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:!1,noiseSuppression:!1,autoGainControl:!1,channelCount:{ideal:2},sampleRate:48000}});connectSource(audioCtx.createMediaStreamSource(mediaStream),!0,'mic')}catch(e){alert(e)}};
+btnSystem.onclick=async()=>{try{await initAudio();mediaStream=await navigator.mediaDevices.getDisplayMedia({video:!0,audio:{echoCancellation:!1,noiseSuppression:!1,autoGainControl:!1}});mediaStream.getVideoTracks().forEach(t=>t.stop());connectSource(audioCtx.createMediaStreamSource(mediaStream),muteSystem.checked,'system')}catch(e){alert(e)}};
+btnStop.onclick=()=>disconnectAll();
+sens.oninput=e=>{hsA_min=+e.target.value;sensVal.textContent=hsA_min+' dB'};nfBase.oninput=e=>{hSv_min=+e.target.value;nfVal.textContent=hSv_min+' dB'};
+function render(){rafId=requestAnimationFrame(render);if(!isPlaying)return;const rect=canvas.getBoundingClientRect(),w=rect.width,h=rect.height,topH=h/2;analyserL.getFloatFrequencyData(dataL);analyserR.getFloatFrequencyData(dataR);const sr=audioCtx.sampleRate,bin=analyserL.frequencyBinCount,fft=analyserL.fftSize;const vals=[];for(let i=1;i<bin;i++){const f=i*sr/fft;if(f<20||f>20000)continue;const v=(dataL[i]+dataR[i])*.5;if(v>-140)vals.push(v)}vals.sort((a,b)=>a-b);const nf=vals[Math.floor(Math.max(10,vals.length*.1)*.5)]??-90,S=1-clamp((nf-hSv_min)/(hSv_max-hSv_min),0,1);topCtx.globalCompositeOperation='source-over';topCtx.fillStyle='rgba(10,10,12,0.25)';topCtx.fillRect(0,0,w,topH);topCtx.globalCompositeOperation='lighter';const ll=log10(20),lh=log10(20000),lr=lh-ll;for(let i=2;i<bin;i+=2){const f=i*sr/fft;if(f<20||f>20000)continue;let l=dataL[i],r=dataR[i];if(!isFinite(l))l=-140;if(!isFinite(r))r=-140;let L=dbToLin(l),R=dbToLin(r);if(L<1e-9&&R<1e-9)continue;const sum=L+R,pan=(L-R)/(sum+1e-12); // -1左 +1右
+const x=w*0.5 + pan*(w*0.5); // ← 修正：画面端までフルに使う
+const mag=(l+r)*.5;let bh=(mag-hsA_min)/(hsA_max-hsA_min)*topH;bh=clamp(bh,0,topH);if(bh<1)continue;const H=270*clamp((log10(f)-ll)/lr,0,1),a=Math.pow(bh/topH,.7)*.9+.05,[cr,cg,cb]=hsv2rgb(H/360,S,1);topCtx.fillStyle=`rgba(${cr},${cg},${cb},${a})`;topCtx.fillRect(x-1.5,topH-bh,3,bh)}
+// ★ 重要修正：drawImageはピクセルサイズで指定（以前はwで切ってた）
+ctx.clearRect(0,0,w,h);ctx.drawImage(topCanvas,0,0,topCanvas.width,topCanvas.height,0,0,w,topH);ctx.save();ctx.translate(0,h);ctx.scale(1,-1);ctx.drawImage(topCanvas,0,0,topCanvas.width,topCanvas.height,0,0,w,topH);ctx.restore();ctx.strokeStyle='rgba(180,180,200,.15)';ctx.beginPath();ctx.moveTo(w*.5,0);ctx.lineTo(w*.5,h);ctx.moveTo(0,h*.5);ctx.lineTo(w,h*.5);ctx.stroke()}
+</script>
+</body>
+</html>
