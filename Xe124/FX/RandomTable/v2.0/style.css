@@ -317,8 +317,17 @@ canvas.spectrum {
     font-size: 26px;
   }
 
+  .panel {
+    margin: 0 12px 10px; 
+  }
+
   .controls label {
     padding: 8px 10px;
+  }
+
+  input[type="number"],
+  select {
+    font-size: 16px; 
   }
 
   .layer-row {
@@ -327,5 +336,10 @@ canvas.spectrum {
 
   .layer-tag {
     min-width: auto;
+  }
+
+  #grid {
+    grid-template-columns: 1fr; 
+    padding: 12px; 
   }
 }
