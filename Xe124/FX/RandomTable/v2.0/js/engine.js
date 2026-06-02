@@ -58,7 +58,8 @@
   }
 
   function framesToAudio(frames, sr) {
-    const depth  = frames.length;
+    //const depth  = frames.length;
+    const depth  = 256;
     const total  = depth * N;
     const data   = new Float32Array(total);
     const re     = new Float64Array(N);
@@ -177,7 +178,8 @@
     for (const k of ALL_KEYS) LABELS[k] = EFFECTS[k].label || k;
     function randEff() { return NON_RAND_KEYS[(Math.random() * NON_RAND_KEYS.length) | 0]; }
 
-    const depth     = Math.max(8, Math.round(seconds * sr / N));
+    //const depth     = Math.max(8, Math.round(seconds * sr / N));
+    const depth  = 256;
     const keyframes = makeKeyframes(depth, coreType || 'metaai');
     const frames    = new Array(depth);
     let kfIdx       = 0;
@@ -231,7 +233,8 @@
       const sr      = parseInt(document.getElementById('sr').value) || 48000;
       const layers  = getSelectedLayers();
       const { data, originalSamples } = await decodeAudioFile(fileInput.files[0]);
-      const depth   = Math.max(8, Math.min(256, Math.round(originalSamples / N)));
+      //const depth   = Math.max(8, Math.min(256, Math.round(originalSamples / N)));
+      const depth  = 256;
 
       for (let ci = 0; ci < count; ci++) {
         const frames = audioToFrames(data, depth);
