@@ -488,8 +488,12 @@
 
     document.getElementById('generateFromFile').addEventListener('click', generateFromAudioFile);
 
-    addLayer('warm',   1);
-    addLayer('bright', 1);
+    addLayer('random', 0);
+    addLayer('random', 0);
+    addLayer('random', 0);
+    addLayer('random', 0);
+    addLayer('random', 0);
+    addLayer('random', 0);
   }
 
   window.WT.initUI = initUI;
