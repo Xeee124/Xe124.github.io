@@ -266,36 +266,53 @@
     }
   }
 
-  function drawPreview(canvas, data, depth) {
+
+    function drawPreview(canvas, data, depth) {
     const ctx = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;
     ctx.fillStyle = '#0b0b0f';
     ctx.fillRect(0, 0, w, h);
     const lines   = Math.min(depth, 180);
-    const step    = depth / lines;
-    const scaleX  = w / N * 0.82;
+    const scaleX  = w / N * 0.65;  
     const scaleY  = h * 0.14;
     const baseY   = h * 0.78;
-    const persp   = 0.32;
-    ctx.lineWidth = 1.1;
+    const persp   = 0.20;          
+    const xOffset = w * 0.08;      
+    const gridPoints = [];
     for (let li = 0; li < lines; li++) {
-      const z          = Math.floor((lines - 1 - li) * step);
-      const depthRatio = li / lines;
+      const depthRatio = (lines - 1 - li) / Math.max(1, lines - 1);
+      const z          = Math.floor(depthRatio * (depth - 1));
       const yOff       = depthRatio * h * 0.55;
       const xShift     = depthRatio * w * persp;
-      const alpha      = 0.15 + 0.7 * depthRatio;
-      ctx.beginPath();
-      const offset = z * N;
+      const offset     = z * N;
+      const row = [];
       for (let i = 0; i < N; i += 2) {
         const s = data[offset + i];
-        const x = (i - N / 2) * scaleX + w * 0.5 - xShift + 18;
+        const x = (i - N / 2) * scaleX + w * 0.5 - xShift + xOffset;
         const y = baseY - yOff - s * scaleY * (1 - depthRatio * 0.3);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        row.push({ x: x, y: y });
       }
-      ctx.strokeStyle = 'rgba(168,85,247,' + alpha + ')';
-      ctx.stroke();
+      gridPoints.push(row);
+    }
+    for (let li = 0; li < lines - 1; li++) {
+      const depthRatio = (lines - 1 - li) / Math.max(1, lines - 1);
+      const alpha = 0.08 + 0.4 * depthRatio; 
+      ctx.fillStyle = 'rgba(168,85,247,' + alpha + ')';
+      const rowCurrent = gridPoints[li];     
+      const rowNext    = gridPoints[li + 1]; 
+      ctx.beginPath();
+      ctx.moveTo(rowCurrent[0].x, rowCurrent[0].y);
+      for (let i = 1; i < rowCurrent.length; i++) {
+        ctx.lineTo(rowCurrent[i].x, rowCurrent[i].y);
+      }
+      for (let i = rowNext.length - 1; i >= 0; i--) {
+        ctx.lineTo(rowNext[i].x, rowNext[i].y);
+      }
+      ctx.closePath();
+      ctx.fill();
     }
   }
+
 
   function drawSpectrum(canvas, avgAmp) {
     const ctx = canvas.getContext('2d');
