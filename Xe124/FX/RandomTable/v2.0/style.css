@@ -37,6 +37,7 @@ h1 {
 }
 
 .panel {
+  width: calc(100% - 24px); /* 画面幅に関わらず、常に左右に12pxの余白を強制確保 */
   max-width: 1140px;
   margin: 0 auto 10px;
   padding: 14px;
@@ -312,34 +313,82 @@ canvas.spectrum {
   line-height: 1.45;
 }
 
-@media (max-width: 480px) {
+/* モバイル環境向け最適化（ブレイクポイントを768pxに引き上げ） */
+@media (max-width: 768px) {
   h1 {
     font-size: 26px;
   }
 
   .panel {
-    margin: 0 12px 10px; 
+    padding: 12px;
+  }
+
+  /* 上部入力項目をスマホ画面幅に合わせて綺麗に整列 */
+  .controls {
+    gap: 8px;
   }
 
   .controls label {
-    padding: 8px 10px;
+    padding: 8px 12px;
+    flex: 1 1 calc(50% - 4px); /* 2列構成ベースにして綺麗にパッキング */
+    justify-content: space-between;
+  }
+
+  /* サンプルレートのドロップダウンのみ横幅いっぱいに広げて押しやすくする */
+  .controls label:has(select) {
+    flex: 1 1 100%;
   }
 
   input[type="number"],
   select {
-    font-size: 16px; 
+    font-size: 16px; /* iOS Safari等でのフォーカス時自動ズームを確実に防止 */
   }
 
+  select {
+    width: 100%;
+    min-width: unset;
+  }
+
+  /* 各レイヤー行のレイアウト調整 */
   .layer-row {
+    flex-direction: column;
     align-items: stretch;
+    gap: 12px;
+    padding: 12px;
   }
 
   .layer-tag {
     min-width: auto;
   }
 
+  .layer-row select {
+    min-width: auto;
+    flex: none;
+    width: 100%;
+  }
+
+  /* パラメータ行をグリッド化し、MIXとSmoothを2行に分離。スライダー幅を最大化 */
+  .layer-param-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto; /* ラベル / シークバー / ％表示 */
+    gap: 10px 8px;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  /* JavaScriptで直書きされている不要な左マージンを強制リセット */
+  .layer-param-row span[style*="margin-left"] {
+    margin-left: 0 !important;
+  }
+
+  input[type="range"].layer-range {
+    min-width: auto;
+    width: 100%;
+  }
+
+  /* 下部グリッドとはみ出し・横スクロール対策 */
   #grid {
-    grid-template-columns: 1fr; 
-    padding: 12px; 
+    grid-template-columns: 1fr;
+    padding: 12px;
   }
 }
