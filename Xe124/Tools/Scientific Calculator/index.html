@@ -1,0 +1,94 @@
+<!-- File: index.html -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>超高精度シンボリック関数電卓 — 解析計算対応版</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>超高精度シンボリック関数電卓</h1>
+    <div class="subtitle">誤差ゼロの厳密代数 + 微分・積分・Σ・数列・対数・微分方程式・ラプラス変換</div>
+  </header>
+
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-mode="calc">計算 / 式</button>
+    <button class="tab" data-mode="diff">微分</button>
+    <button class="tab" data-mode="integ">積分</button>
+    <button class="tab" data-mode="sum">Σ / 数列</button>
+    <button class="tab" data-mode="ode">微分方程式</button>
+    <button class="tab" data-mode="laplace">ラプラス</button>
+  </div>
+
+  <div class="display">
+    <div class="expr-line" id="exprLine"><span class="caret"></span></div>
+
+    <div class="mode-panel" id="panel-calc">
+      <div class="hint">式を入力して「=」。変数 x を含む場合は記号のまま保持されます。</div>
+    </div>
+    <div class="mode-panel hidden" id="panel-diff">
+      <label>変数:<input id="diffVar" value="x"></label>
+      <label>階数:<input id="diffOrder" type="text" value="1"></label>
+    </div>
+    <div class="mode-panel hidden" id="panel-integ">
+      <label>変数:<input id="integVar" value="x"></label>
+      <label>下限:<input id="integLo" placeholder="(空=不定積分)"></label>
+      <label>上限:<input id="integHi" placeholder="(空=不定積分)"></label>
+    </div>
+    <div class="mode-panel hidden" id="panel-sum">
+      <label>添字:<input id="sumIdx" value="k"></label>
+      <label>開始:<input id="sumLo" value="1"></label>
+      <label>終了:<input id="sumHi" value="10"></label>
+      <span class="hint">数列の一般項 a(k) を式欄に。終了に ∞ 不可（有限和）。</span>
+    </div>
+    <div class="mode-panel hidden" id="panel-ode">
+      <span class="hint">y' = f(x,y) の右辺 f を式欄に（y, x を使用）。RK4で数値解。</span>
+      <label>x₀:<input id="odeX0" value="0"></label>
+      <label>y₀:<input id="odeY0" value="1"></label>
+      <label>x終:<input id="odeXend" value="1"></label>
+      <label>刻み n:<input id="odeSteps" value="1000"></label>
+    </div>
+    <div class="mode-panel hidden" id="panel-laplace">
+      <label><input type="radio" name="lap" value="fwd" checked> L[f(t)] 順変換</label>
+      <label><input type="radio" name="lap" value="inv"> L⁻¹[F(s)] 逆変換</label>
+      <span class="hint">順: t の式 / 逆: s の式（変換表ベース）</span>
+    </div>
+
+    <div class="result-grid">
+      <div class="result-box symbolic">
+        <div class="label">真値 / 記号結果</div>
+        <div class="value" id="symbolicOut">—</div>
+      </div>
+      <div class="result-box decimal">
+        <div class="label">高精度10進展開</div>
+        <div class="value" id="decimalOut">—</div>
+      </div>
+    </div>
+    <div class="err" id="errOut"></div>
+  </div>
+
+  <div class="controls">
+    <label>展開桁数:<input type="number" id="precision" value="50" min="1" max="2000"></label>
+    <label>x の評価値:<input type="text" id="xval" placeholder="例: 2 や pi/3"></label>
+  </div>
+
+  <div class="keypad" id="keypad"></div>
+
+  <div class="note">
+    四則は <code>BigInt</code> 厳密有理数、π/e/√/ln は高精度級数で <code>BigInt</code> 展開。微分は完全記号微分、
+    定積分・ODEは適応高精度数値法、不定積分とラプラスは変換規則ベースです。
+  </div>
+</div>
+
+<script src="bignum.js"></script>
+<script src="ast.js"></script>
+<script src="parser.js"></script>
+<script src="calculus.js"></script>
+<script src="laplace.js"></script>
+<script src="evaluator.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
