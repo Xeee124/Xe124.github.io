@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IQ_OSC – WASM AdaptiveScope (AudioWorklet / hop=1)</title>
+    <style>
+      html, body {
+        margin: 0; padding: 0;
+        background: #000; color: #d8d8e0;
+        font-family: "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+        height: 100%;
+      }
+      body { display: flex; flex-direction: column; }
+      header {
+        padding: 10px 16px; background: #0c0c0f;
+        border-bottom: 1px solid #1d1d24;
+        display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      }
+      header h1 {
+        font-size: 15px; font-weight: 600; margin: 0;
+        color: #00e5ff; letter-spacing: 0.5px; white-space: nowrap;
+      }
+      .ctrl { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #7a7a88; }
+      .ctrl label { white-space: nowrap; }
+      select, input[type="file"], button {
+        background: #15151b; color: #d8d8e0;
+        border: 1px solid #1d1d24; border-radius: 5px;
+        padding: 5px 8px; font-size: 12px; font-family: inherit;
+      }
+      button { cursor: pointer; }
+      button:hover { border-color: #00e5ff; color: #00e5ff; }
+      button:disabled { opacity: 0.4; cursor: not-allowed; }
+      input[type="range"] { width: 110px; accent-color: #00e5ff; }
+      .val { min-width: 42px; text-align: right; color: #d8d8e0; }
+      .legend { display: flex; gap: 12px; font-size: 11px; margin-left: auto; }
+      .legend span { display: flex; align-items: center; gap: 4px; }
+      .sw { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+      main { flex: 1; position: relative; min-height: 0; }
+      canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+      .status {
+        position: absolute; left: 12px; bottom: 10px;
+        font-size: 11px; color: #7a7a88;
+        pointer-events: none; text-shadow: 0 0 4px #000; line-height: 1.5;
+      }
+      audio { display: none; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>IQ_OSC (WASM)</h1>
+      <div class="ctrl">
+        <label for="mode">表示</label>
+        <select id="mode">
+          <option value="qam" selected>QAM (I/Q)</option>
+          <option value="psk">PSK (位相環)</option>
+        </select>
+      </div>
+      <div class="ctrl">
+        <label for="taps">精度(フィルタ長)</label>
+        <select id="taps">
+          <option value="511">512</option>
+          <option value="1023">1024</option>
+          <option value="2047">2048</option>
+          <option value="4095" selected>4096</option>
+        </select>
+      </div>
+      <div class="ctrl">
+        <label for="trail">軌跡長</label>
+        <input type="range" id="trail" min="64" max="4000" step="64" value="1152" />
+        <span class="val" id="trailVal">1152</span>
+      </div>
+      <div class="ctrl">
+        <label for="gain">感度</label>
+        <input type="range" id="gain" min="1" max="1500" step="2.5" value="100" />
+        <span class="val" id="gainVal">2.5x</span>
+      </div>
+      <div class="ctrl">
+        <label for="kval">スケールK</label>
+        <input type="range" id="kval" min="1" max="100" step="1" value="1" />
+        <span class="val" id="kValTxt">1</span>
+      </div>
+      <div class="ctrl">
+        <label for="file">音声</label>
+        <input type="file" id="file" accept="audio/*" />
+      </div>
+      <div class="ctrl">
+        <button id="play" disabled>▶ 再生</button>
+        <button id="mic">🎤 マイク</button>
+        <button id="sysaudio">💻 システム音声</button>
+      </div>
+      <div class="legend">
+        <span><span class="sw" style="background:rgb(220,0,0)"></span>低域 20–200 Hz</span>
+        <span><span class="sw" style="background:rgb(0,45,255)"></span>中域 200–2k Hz</span>
+        <span><span class="sw" style="background:rgb(0,80,85)"></span>高域 2k–22k Hz</span>
+      </div>
+    </header>
+
+    <main>
+      <canvas id="cv"></canvas>
+      <div class="status" id="status">AudioWorklet を初期化中…</div>
+    </main>
+
+    <audio id="audio" crossorigin="anonymous"></audio>
+    <script src="ScaleFunction_y.js"></script>
+
+    <script type="module">
+      "use strict";
+
+      // ══════════════════════════════════════════════════════════════════════
+      // WORKLET SOURCE  (オーディオスレッドで動く。メインスレッドには来ない)
+      //
+      //  ・ScriptProcessorNode → AudioWorkletNode に変更した理由：
+      //    ScriptProcessor は「メインスレッド」で onaudioprocess を発火させる。
+      //    WASM の SFM-DFT (K=127 × L=256 × 3エンジン、毎64サンプル) が
+      //    メインスレッドを占有し requestAnimationFrame を飢餓させる → 7fps 。
+      //    AudioWorklet は独立した「オーディオスレッド」で動作するため、
+      //    メインスレッドは 描画のみに集中できる → ~60fps 。
+      //
+      //  ・WASM はオーディオスレッド内でロード・実行される。
+      //    メインスレッドへは I/Q データのみ転送 (transferable Float32Array)。
+      //  ・__WASM_URL__ は addModule() 前に実際の URL に置換される。
+      // ══════════════════════════════════════════════════════════════════════
+      const WORKLET_TEMPLATE = `
+import createAdaptiveScope from '__WASM_URL__';
+
+// ── Biquad IIR (Direct-Form II Transposed) ──────────────────────────────
+class Biquad {
+  constructor(b0,b1,b2,a1,a2){
+    this.b0=b0; this.b1=b1; this.b2=b2; this.a1=a1; this.a2=a2;
+    this.w1=0;  this.w2=0;
+  }
+  clear()    { this.w1=0; this.w2=0; }
+  process(x) {
+    const y=this.b0*x+this.w1;
+    this.w1=this.b1*x-this.a1*y+this.w2;
+    this.w2=this.b2*x-this.a2*y;
+    return y;
+  }
+}
+function mkLPF(fc,fs){
+  const w0=2*Math.PI*fc/fs, c=Math.cos(w0), s=Math.sin(w0);
+  const a=s/Math.SQRT2, a0=1+a;
+  return new Biquad((1-c)/2/a0,(1-c)/a0,(1-c)/2/a0,-2*c/a0,(1-a)/a0);
+}
+function mkHPF(fc,fs){
+  const w0=2*Math.PI*fc/fs, c=Math.cos(w0), s=Math.sin(w0);
+  const a=s/Math.SQRT2, a0=1+a;
+  return new Biquad((1+c)/2/a0,-(1+c)/a0,(1+c)/2/a0,-2*c/a0,(1-a)/a0);
+}
+class LR4 {
+  constructor(f1,f2){ this.f1=f1; this.f2=f2; }
+  clear()    { this.f1.clear(); this.f2.clear(); }
+  process(x) { return this.f2.process(this.f1.process(x)); }
+}
+class MidBand {
+  constructor(fs){
+    this.hp=new LR4(mkHPF(200,fs),mkHPF(200,fs));
+    this.lp=new LR4(mkLPF(2000,fs),mkLPF(2000,fs));
+  }
+  clear()    { this.hp.clear(); this.lp.clear(); }
+  process(x) { return this.lp.process(this.hp.process(x)); }
+}
+function makeBandFilters(fs){
+  return[
+    new LR4(mkLPF(200,fs), mkLPF(200,fs)),
+    new MidBand(fs),
+    new LR4(mkHPF(2000,fs),mkHPF(2000,fs)),
+  ];
+}
+
+// ── WASM 初期化 (top-level await: registerProcessor より前に完了保証) ──
+const WM = await createAdaptiveScope();
+
+// ── AudioWorkletProcessor ───────────────────────────────────────────────
+registerProcessor('iq-processor', class extends AudioWorkletProcessor {
+  constructor(opt){
+    super(opt);
+    // sampleRate は AudioWorkletGlobalScope のグローバル (= AudioContext.sampleRate)
+    this._eng=[0,1,2].map(()=>{ const e=new WM.AdaptiveScope(); e.init(); return e; });
+    this._bf=makeBandFilters(sampleRate);
+    this.port.onmessage=({data})=>{
+      if(data==='reset'){
+        this._eng.forEach(e=>e.reset());
+        this._bf.forEach(f=>f.clear());
+      }
+    };
+  }
+
+  process(inputs){
+    const ch=inputs[0];
+    if(!ch||!ch[0]) return true;
+    const c0=ch[0], c1=ch[1]||ch[0];
+    const N=c0.length;   // 通常 128 サンプル / quantum
+
+    // 帯域別 I/Q バッファ (transfer 後に neutered → 毎回 new が必要)
+    const I0=new Float32Array(N), Q0=new Float32Array(N);
+    const I1=new Float32Array(N), Q1=new Float32Array(N);
+    const I2=new Float32Array(N), Q2=new Float32Array(N);
+    const e=this._eng, b=this._bf;
+
+    for(let i=0;i<N;i++){
+      const m=(c0[i]+c1[i])*0.5;   // ステレオ→モノラル
+      let r;
+      r=e[0].processSample(b[0].process(m)); I0[i]=r[1]; Q0[i]=r[2];
+      r=e[1].processSample(b[1].process(m)); I1[i]=r[1]; Q1[i]=r[2];
+      r=e[2].processSample(b[2].process(m)); I2[i]=r[1]; Q2[i]=r[2];
+    }
+
+    // ゼロコピー転送 (Transferable) でメインスレッドへ送る
+    this.port.postMessage(
+      {I0,Q0,I1,Q1,I2,Q2},
+      [I0.buffer,Q0.buffer,I1.buffer,Q1.buffer,I2.buffer,Q2.buffer]
+    );
+    return true;   // keep processor alive
+  }
+});
+`;
+
+      // ══════════════════════════════════════════════════════════════════════
+      // DOM
+      // ══════════════════════════════════════════════════════════════════════
+      const cv       = document.getElementById('cv');
+      const ctx      = cv.getContext('2d', { alpha: false });
+      const audioEl  = document.getElementById('audio');
+      const fileInp  = document.getElementById('file');
+      const playBtn  = document.getElementById('play');
+      const micBtn   = document.getElementById('mic');
+      const sysBtn   = document.getElementById('sysaudio');
+      const modeSel  = document.getElementById('mode');
+      const tapsSel  = document.getElementById('taps');
+      const trailSl  = document.getElementById('trail');
+      const trailVal = document.getElementById('trailVal');
+      const gainSl   = document.getElementById('gain');
+      const gainVal  = document.getElementById('gainVal');
+      const kSl      = document.getElementById('kval');
+      const kValTxt  = document.getElementById('kValTxt');
+      const statusEl = document.getElementById('status');
+      const SF       = window.ScaleFunction;
+
+      // ══════════════════════════════════════════════════════════════════════
+      // 帯域定義・State
+      // ══════════════════════════════════════════════════════════════════════
+      const BANDS = [
+        { lo:  20,  hi:  200, color:[220, 0,  0] },
+        { lo: 200,  hi: 2000, color:[  0,45,255] },
+        { lo:2000,  hi:22050, color:[  0,80, 85] },
+      ];
+      const state = { mode:'qam', taps:1023, trail:1152, gain:2.5 };
+
+      // ══════════════════════════════════════════════════════════════════════
+      // リングバッファ (2^12 = 4096, ビットマスク演算)
+      // ── メインスレッドのみ読み書き (port.onmessage は MT で発火)
+      // ══════════════════════════════════════════════════════════════════════
+      const MAX_RING  = 4096;
+      const RING_MASK = MAX_RING - 1;
+      const rings = BANDS.map(()=>({
+        I:new Float32Array(MAX_RING), Q:new Float32Array(MAX_RING),
+        head:0, len:0,
+        clear(){ this.head=0; this.len=0; this.I.fill(0); this.Q.fill(0); },
+      }));
+
+      // ══════════════════════════════════════════════════════════════════════
+      // Audio コンテキスト管理
+      // ══════════════════════════════════════════════════════════════════════
+      let audioCtx     = null;
+      let workletReady = false;   // addModule() 済みフラグ
+      let workletNode  = null;
+      let fileMediaSrc = null;
+      let filePlayGain = null;
+      let activeStream = null;
+      let activeMode   = null;
+
+      function ensureCtx(){
+        if(!audioCtx){
+          audioCtx = new (window.AudioContext||window.webkitAudioContext)({
+            latencyHint:'interactive',
+            sampleRate: 48000,   // WASM Params.fs=48000 に合わせる (必須)
+          });
+        }
+        return audioCtx;
+      }
+
+      // WorkletModule を AudioContext に登録 (一度だけ)
+      async function ensureWorklet(){
+        if(workletReady) return;
+        const url = new URL('./adaptive_scope.js', document.baseURI).href;
+        const src = WORKLET_TEMPLATE.replace("'__WASM_URL__'", JSON.stringify(url));
+        const blob = new Blob([src],{type:'application/javascript'});
+        const blobUrl = URL.createObjectURL(blob);
+        try {
+          await audioCtx.audioWorklet.addModule(blobUrl);
+          workletReady = true;
+        } finally {
+          URL.revokeObjectURL(blobUrl);
+        }
+      }
+
+      // ── WorkletNode を生成し port.onmessage でリングバッファを更新 ─────────
+      function buildWorkletNode(){
+        const node = new AudioWorkletNode(audioCtx,'iq-processor',{
+          numberOfInputs:  1,
+          numberOfOutputs: 1,
+          outputChannelCount:[1],
+          channelCount: 2,
+          channelCountMode:'explicit',
+          channelInterpretation:'discrete',
+        });
+
+        node.port.onmessage = ({data})=>{
+          // audio thread → main thread: I/Q データ受け取り→リングバッファへ書き込む
+          // この処理は非常に軽い (128×3×2 の Float32 代入のみ)
+          const {I0,Q0,I1,Q1,I2,Q2} = data;
+          const N = I0.length;
+          writeRing(0,I0,Q0,N);
+          writeRing(1,I1,Q1,N);
+          writeRing(2,I2,Q2,N);
+        };
+
+        // WorkletNode が生きるには destination への経路が必要 → gain=0 で無音経由
+        const mute = audioCtx.createGain();
+        mute.gain.value = 0;
+        node.connect(mute);
+        mute.connect(audioCtx.destination);
+        return node;
+      }
+
+      function writeRing(bi,Ia,Qa,N){
+        const r = rings[bi];
+        for(let i=0;i<N;i++){
+          r.I[r.head]=Ia[i];
+          r.Q[r.head]=Qa[i];
+          r.head = (r.head+1) & RING_MASK;
+          if(r.len<MAX_RING) r.len++;
+        }
+      }
+
+      // ── 全音声リソース解放 ─────────────────────────────────────────────────
+      function teardown(){
+        if(workletNode){
+          try{ workletNode.disconnect(); }catch(_){}
+          workletNode.port.onmessage = null;
+          workletNode = null;
+        }
+        if(activeStream){
+          activeStream.getTracks().forEach(t=>t.stop());
+          activeStream = null;
+        }
+        if(filePlayGain)
+          filePlayGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
+        if(!audioEl.paused) audioEl.pause();
+        playBtn.textContent  ='▶ 再生';
+        micBtn.textContent   ='🎤 マイク';   micBtn.style.color='';
+        sysBtn.textContent   ='💻 システム音声'; sysBtn.style.color='';
+        activeMode = null;
+      }
+
+      // ── ソースノードを WorkletNode に接続して解析開始 ─────────────────────
+      async function attachAnalysis(src, enablePlayback){
+        rings.forEach(r=>r.clear());
+
+        // WorkletNode 生成
+        workletNode = buildWorkletNode();
+        workletNode.port.postMessage('reset');   // エンジン・IIR フィルタをリセット
+
+        src.connect(workletNode);
+
+        if(enablePlayback && filePlayGain)
+          filePlayGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.02);
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // ファイル音声
+      // ══════════════════════════════════════════════════════════════════════
+      fileInp.addEventListener('change', async()=>{
+        const f = fileInp.files[0];
+        if(!f) return;
+        try{
+          teardown();
+          ensureCtx();
+          if(audioCtx.state==='suspended') await audioCtx.resume();
+          statusEl.textContent='WASM ロード中…';
+          await ensureWorklet();
+
+          if(!fileMediaSrc){
+            fileMediaSrc = audioCtx.createMediaElementSource(audioEl);
+            filePlayGain = audioCtx.createGain();
+            filePlayGain.gain.value=0;
+            fileMediaSrc.connect(filePlayGain);
+            filePlayGain.connect(audioCtx.destination);
+          }
+          audioEl.src = URL.createObjectURL(f);
+          audioEl.load();
+
+          await attachAnalysis(fileMediaSrc, true);
+          activeMode='file';
+          playBtn.disabled=false;
+          statusEl.textContent='ファイル読込完了 – ▶ 再生で開始';
+        }catch(ex){
+          statusEl.textContent='ファイル失敗: '+ex.message;
+        }
+      });
+
+      playBtn.addEventListener('click', async()=>{
+        if(!audioCtx) return;
+        if(audioCtx.state==='suspended') await audioCtx.resume();
+        if(audioEl.paused){ await audioEl.play(); playBtn.textContent='⏸ 停止'; }
+        else              { audioEl.pause();       playBtn.textContent='▶ 再生'; }
+      });
+      audioEl.addEventListener('ended',()=>{ playBtn.textContent='▶ 再生'; });
+
+      // ══════════════════════════════════════════════════════════════════════
+      // マイク
+      // ══════════════════════════════════════════════════════════════════════
+      micBtn.addEventListener('click', async()=>{
+        if(activeMode==='mic'){ teardown(); return; }
+        try{
+          teardown();
+          ensureCtx();
+          if(audioCtx.state==='suspended') await audioCtx.resume();
+          statusEl.textContent='WASM ロード中…';
+          await ensureWorklet();
+
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},
+          });
+          activeStream = stream;
+          const src = audioCtx.createMediaStreamSource(stream);
+
+          await attachAnalysis(src, false);   // ← マイクは destination へ送らない (エコー防止)
+          activeMode='mic';
+          micBtn.textContent='⏹ マイク停止'; micBtn.style.color='#ff5050';
+          statusEl.textContent='マイク入力中 | AudioWorklet+WASM | ミュート中 (エコー防止)';
+        }catch(ex){
+          statusEl.textContent='マイク失敗: '+ex.message;
+        }
+      });
+
+      // ══════════════════════════════════════════════════════════════════════
+      // システム音声 (PC向け / getDisplayMedia)
+      //
+      //  ★ destination へは絶対に送らない ★
+      //    すでにシステム内で音が鳴っている。再度 destination へ送ると
+      //    元音 + 遅延コピーが重なり → Comb フィルタ → 計測対象が不明になる。
+      // ══════════════════════════════════════════════════════════════════════
+      sysBtn.addEventListener('click', async()=>{
+        if(activeMode==='system'){ teardown(); return; }
+        try{
+          teardown();
+          ensureCtx();
+          if(audioCtx.state==='suspended') await audioCtx.resume();
+          statusEl.textContent='WASM ロード中…';
+          await ensureWorklet();
+
+          let stream;
+          try{
+            // Chrome 105+: audio-only getDisplayMedia
+            stream = await navigator.mediaDevices.getDisplayMedia({
+              audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},
+              video:false,
+            });
+          }catch{
+            // フォールバック: 最小 video + 即停止
+            stream = await navigator.mediaDevices.getDisplayMedia({
+              audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},
+              video:{width:1,height:1,frameRate:1},
+            });
+            stream.getVideoTracks().forEach(t=>t.stop());
+          }
+
+          if(!stream.getAudioTracks().length){
+            statusEl.textContent='システム音声: トラック取得不可 (Windowsは「ステレオミキサー」等を有効化)';
+            return;
+          }
+
+          activeStream = stream;
+          const src = audioCtx.createMediaStreamSource(stream);
+
+          // enablePlayback=false: Comb 防止のため destination へは送らない
+          await attachAnalysis(src, false);
+          activeMode='system';
+          sysBtn.textContent='⏹ システム停止'; sysBtn.style.color='#00e5ff';
+          statusEl.textContent='システム音声入力中 | AudioWorklet+WASM | Comb防止ミュート済';
+        }catch(ex){
+          statusEl.textContent='システム音声失敗: '+ex.message;
+        }
+      });
+
+      // ══════════════════════════════════════════════════════════════════════
+      // コントロール
+      // ══════════════════════════════════════════════════════════════════════
+      modeSel.addEventListener('change', ()=>(state.mode=modeSel.value));
+      tapsSel.addEventListener('change', ()=>{ state.taps=parseInt(tapsSel.value,10); });
+      trailSl.addEventListener('input',  ()=>{ state.trail=parseInt(trailSl.value,10); trailVal.textContent=state.trail; });
+      gainSl.addEventListener( 'input',  ()=>{ state.gain=parseInt(gainSl.value,10)/100; gainVal.textContent=state.gain.toFixed(1)+'x'; });
+      kSl.addEventListener(    'input',  ()=>{ SF.setK(parseInt(kSl.value,10)); kValTxt.textContent=kSl.value; });
+
+      // ══════════════════════════════════════════════════════════════════════
+      // Canvas + 描画  (メインスレッドはここだけ。重い処理は一切ない)
+      // ══════════════════════════════════════════════════════════════════════
+      function resize(){
+        const dpr=Math.min(window.devicePixelRatio||1,2);
+        const r=cv.getBoundingClientRect();
+        cv.width =Math.max(1,Math.floor(r.width *dpr));
+        cv.height=Math.max(1,Math.floor(r.height*dpr));
+      }
+      window.addEventListener('resize',resize);
+
+      // 極座標変換: 半径=ScaleFunction(振幅), 角度=位相
+      function toXY(I,Q,cx,cy,R){
+        const mag=Math.hypot(I,Q);
+        const ph =Math.atan2(Q,I);
+        const r  =SF.scaleFunction_y(Math.min(1,mag*state.gain));
+        return{ x:cx+Math.cos(ph)*r*R, y:cy-Math.sin(ph)*r*R };
+      }
+
+      let layers=null;
+      function ensureLayers(W,H){
+        if(!layers) layers=BANDS.map(()=>document.createElement('canvas').getContext('2d'));
+        for(const l of layers){
+          if(l.canvas.width!==W||l.canvas.height!==H){l.canvas.width=W;l.canvas.height=H;}
+        }
+      }
+
+      function drawTrail(tgt,bi,count,color,cx,cy,R){
+        const ring=rings[bi];
+        let prevX=null,prevY=null;
+        for(let i=0;i<count;i++){
+          const idx=(ring.head-count+i+MAX_RING)&RING_MASK;
+          const p=toXY(ring.I[idx],ring.Q[idx],cx,cy,R);
+          const age=i/count;
+          const alpha=age*age*0.92+0.03;
+          if(prevX!==null){
+            tgt.strokeStyle=`rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
+            tgt.lineWidth=0.7+age*2.0;
+            tgt.beginPath(); tgt.moveTo(prevX,prevY); tgt.lineTo(p.x,p.y); tgt.stroke();
+          }
+          prevX=p.x; prevY=p.y;
+        }
+        if(prevX!==null){
+          tgt.fillStyle=`rgba(${color[0]},${color[1]},${color[2]},1)`;
+          tgt.beginPath(); tgt.arc(prevX,prevY,2.4,0,Math.PI*2); tgt.fill();
+        }
+      }
+
+      let lastT=performance.now(), fps=120;
+
+      function draw(){
+        const now=performance.now();
+        fps=fps*0.9+(1000/Math.max(1,now-lastT))*0.1;
+        lastT=now;
+
+        const W=cv.width, H=cv.height;
+        ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+
+        const cx=W*0.5, cy=H*0.5, R=Math.min(W,H)*0.46;
+
+        ensureLayers(W,H);
+        for(const l of layers){
+          l.clearRect(0,0,W,H);
+          l.globalCompositeOperation='lighter';
+          l.lineCap='round';
+        }
+
+        if(activeMode!==null){
+          for(let bi=2;bi>=0;bi--){
+            const count=Math.min(rings[bi].len,state.trail);
+            if(count<2) continue;
+            drawTrail(layers[bi],bi,count,BANDS[bi].color,cx,cy,R);
+          }
+        }
+
+        ctx.globalCompositeOperation='source-over';
+        ctx.drawImage(layers[2].canvas,0,0);
+        ctx.drawImage(layers[1].canvas,0,0);
+        ctx.drawImage(layers[0].canvas,0,0);
+
+        // ガイド (軸線 + 外周円)
+        ctx.globalCompositeOperation='source-over';
+        ctx.strokeStyle='rgba(55,55,66,0.5)'; ctx.lineWidth=1;
+        ctx.beginPath();
+        ctx.moveTo(cx-R,cy); ctx.lineTo(cx+R,cy);
+        ctx.moveTo(cx,cy-R); ctx.lineTo(cx,cy+R);
+        ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.stroke();
+
+        // ステータス
+        const ML={file:'ファイル',mic:'マイク',system:'システム音声'};
+        statusEl.textContent = activeMode
+          ? `AudioWorklet+WASM | ${ML[activeMode]} | Lh=65/LR4 | K=${SF.K} | trail=${state.trail} | ${fps.toFixed(0)} fps`
+          : '音声ソースを選択してください (ファイル / マイク / システム音声)';
+
+        requestAnimationFrame(draw);
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // 起動
+      // ══════════════════════════════════════════════════════════════════════
+      resize();
+      requestAnimationFrame(draw);
+      statusEl.textContent='準備完了 – 音声ソースを選択してください';
+    </script>
+  </body>
+</html>
