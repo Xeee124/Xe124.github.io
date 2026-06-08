@@ -1,20 +1,19 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>IQ_OSC – WASM AdaptiveScope (AudioWorklet / hop=1)</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>IQ_OSC – WASM AdaptiveScope (AudioWorklet)</title>
   <style>
     html,body{margin:0;padding:0;background:#000;color:#d8d8e0;font-family:"Segoe UI","Hiragino Sans","Noto Sans JP",sans-serif;height:100%;}
     body{display:flex;flex-direction:column;}
     header{padding:10px 16px;background:#0c0c0f;border-bottom:1px solid #1d1d24;display:flex;flex-wrap:wrap;align-items:center;gap:14px;}
-    header h1{font-size:15px;font-weight:600;margin:0;color:#00e5ff;letter-spacing:0.5px;white-space:nowrap;}
+    header h1{font-size:15px;font-weight:600;margin:0;color:#00e5ff;letter-spacing:.5px;white-space:nowrap;}
     .ctrl{display:flex;align-items:center;gap:6px;font-size:12px;color:#7a7a88;}
     .ctrl label{white-space:nowrap;}
     select,input[type="file"],button{background:#15151b;color:#d8d8e0;border:1px solid #1d1d24;border-radius:5px;padding:5px 8px;font-size:12px;font-family:inherit;}
-    button{cursor:pointer;}
-    button:hover{border-color:#00e5ff;color:#00e5ff;}
-    button:disabled{opacity:0.4;cursor:not-allowed;}
+    button{cursor:pointer;}button:hover{border-color:#00e5ff;color:#00e5ff;}
+    button:disabled{opacity:.4;cursor:not-allowed;}
     input[type="range"]{width:110px;accent-color:#00e5ff;}
     .val{min-width:42px;text-align:right;color:#d8d8e0;}
     .legend{display:flex;gap:12px;font-size:11px;margin-left:auto;}
@@ -60,28 +59,58 @@
   <script src="ScaleFunction_y.js"></script>
 
   <script type="module">
-    "use strict";
+  "use strict";
 
-    // ════════════════════════════════════════════════════════════════════
-    // 【根本的修正】fetch is not defined in AudioWorklet の解決策
-    //
-    //  問題: -sENVIRONMENT=web,worker でビルドしても AudioWorkletGlobalScope では
-    //        typeof window  == 'undefined'  → ENVIRONMENT_IS_WEB  = false
-    //        typeof importScripts == 'undefined' → ENVIRONMENT_IS_WORKER = false
-    //        → Emscripten が生成するローカル変数 fetch/readAsync が未代入
-    //        → WebAssembly.instantiateStreaming(fetch(...)) で ReferenceError
-    //
-    //  解決: WASM バイナリのフェッチをメインスレッド(window)で行い、
-    //        ArrayBuffer として worklet に postMessage で渡す。
-    //        worklet は createAdaptiveScope({ wasmBinary: buffer }) を呼ぶ。
-    //        Emscripten はこのパスで WebAssembly.instantiate(binary) を直接呼び、
-    //        fetch も URL も一切使わない → AudioWorklet でも動作する。
-    // ════════════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════════════════════════════════════
+  //  根本原因の解説
+  //
+  //  Emscripten は ENVIRONMENT=web,worker でも以下のコードを生成する:
+  //
+  //    var URL;                          // ← ローカル変数がグローバル URL を隠蔽
+  //    if (ENVIRONMENT_IS_WEB)    URL = window.URL;
+  //    else if (ENVIRONMENT_IS_WORKER) URL = self.URL;
+  //    // AudioWorklet では両方 false → URL は undefined のまま
+  //    // → new URL('adaptive_scope.wasm', ...) で ReferenceError!
+  //
+  //  検出コード:
+  //    ENVIRONMENT_IS_WEB    = typeof window    == 'object'   // AudioWorklet: false
+  //    ENVIRONMENT_IS_WORKER = typeof importScripts == 'function' // AudioWorklet: false
+  //
+  //  解決策: dynamic import() の前に self.importScripts を関数として偽装する。
+  //    → ENVIRONMENT_IS_WORKER = true
+  //    → URL = self.URL        (AudioWorkletGlobalScope に self.URL は存在する) ✓
+  //    → fetch = self.fetch    (AudioWorklet に fetch は存在する) ✓
+  //    → self.location の偽装で scriptDirectory も正しく計算される ✓
+  //
+  //  さらに、メインスレッドで fetch した wasmBinary を渡すことで
+  //  Worklet 内での fetch 呼び出し自体を完全に不要にする (二重の保険)。
+  // ════════════════════════════════════════════════════════════════════════
 
-    // ── Worklet ソース (__WASM_JS_URL__ のみ実行時に置換) ──────────────
-    const WORKLET_TEMPLATE = `
-import createAdaptiveScope from '__WASM_JS_URL__';
+  const WORKLET_TEMPLATE = `
 
+// ── Worker 環境偽装ポリフィル ────────────────────────────────────────────
+// Emscripten の環境検出を「Worker だ」と思わせる。
+// self.importScripts が関数 → ENVIRONMENT_IS_WORKER = true
+// → URL = self.URL, fetch = self.fetch が代入され、正常動作する。
+//
+// ※ static import はモジュール評価前にホイスティングされるため
+//   ポリフィルより先に adaptive_scope.js が実行されてしまう。
+//   そのため dynamic import() を使う。
+if (typeof self.importScripts !== 'function') {
+  self.importScripts = () => {};
+}
+// Emscripten が self.location.href からスクリプトディレクトリを計算する
+if (typeof self.location === 'undefined') {
+  Object.defineProperty(self, 'location', {
+    value: { href: '__WASM_JS_URL__' },
+    configurable: true
+  });
+}
+
+// dynamic import: ポリフィルが設定された後に adaptive_scope.js を評価させる
+const { default: createAdaptiveScope } = await import('__WASM_JS_URL__');
+
+// ── IIR 帯域分割フィルタ (Direct-Form II Transposed / LR4) ──────────────
 class Biquad {
   constructor(b0,b1,b2,a1,a2){this.b0=b0;this.b1=b1;this.b2=b2;this.a1=a1;this.a2=a2;this.w1=0;this.w2=0;}
   clear(){this.w1=0;this.w2=0;}
@@ -97,10 +126,10 @@ class MidBand{
 }
 function makeBandFilters(fs){return[new LR4(mkLPF(200,fs),mkLPF(200,fs)),new MidBand(fs),new LR4(mkHPF(2000,fs),mkHPF(2000,fs))];}
 
-// top-level await は使わない。
-// WASM バイナリはメインスレッドが fetch し、port 経由で {type:'init', wasmBinary} として届く。
-// createAdaptiveScope({ wasmBinary }) は WebAssembly.instantiate(buffer) を直接呼ぶため
-// AudioWorkletGlobalScope 内で fetch / URL を一切必要としない。
+// ── AudioWorkletProcessor ────────────────────────────────────────────────
+// WASM バイナリはメインスレッドが fetch → port 経由で {type:'init',wasmBinary} として届く。
+// createAdaptiveScope({wasmBinary}) は WebAssembly.instantiate(buffer) を直接呼ぶので
+// Worklet 内での fetch/URL を一切必要としない (ポリフィルとの二重の保険)。
 registerProcessor('iq-processor', class extends AudioWorkletProcessor {
   constructor(opt){
     super(opt);
@@ -124,7 +153,6 @@ registerProcessor('iq-processor', class extends AudioWorkletProcessor {
       }
     };
   }
-
   process(inputs){
     if(!this._ready) return true;
     const ch=inputs[0];
@@ -149,305 +177,226 @@ registerProcessor('iq-processor', class extends AudioWorkletProcessor {
 });
 `;
 
-    // ── DOM ─────────────────────────────────────────────────────────────
-    const cv       = document.getElementById('cv');
-    const ctx      = cv.getContext('2d',{alpha:false});
-    const audioEl  = document.getElementById('audio');
-    const fileInp  = document.getElementById('file');
-    const playBtn  = document.getElementById('play');
-    const micBtn   = document.getElementById('mic');
-    const sysBtn   = document.getElementById('sysaudio');
-    const modeSel  = document.getElementById('mode');
-    const tapsSel  = document.getElementById('taps');
-    const trailSl  = document.getElementById('trail');
-    const trailVal = document.getElementById('trailVal');
-    const gainSl   = document.getElementById('gain');
-    const gainVal  = document.getElementById('gainVal');
-    const kSl      = document.getElementById('kval');
-    const kValTxt  = document.getElementById('kValTxt');
-    const statusEl = document.getElementById('status');
-    const SF       = window.ScaleFunction;
+  // ── DOM ────────────────────────────────────────────────────────────────
+  const cv=document.getElementById('cv'),ctx=cv.getContext('2d',{alpha:false});
+  const audioEl=document.getElementById('audio'),fileInp=document.getElementById('file');
+  const playBtn=document.getElementById('play'),micBtn=document.getElementById('mic'),sysBtn=document.getElementById('sysaudio');
+  const modeSel=document.getElementById('mode'),tapsSel=document.getElementById('taps');
+  const trailSl=document.getElementById('trail'),trailVal=document.getElementById('trailVal');
+  const gainSl=document.getElementById('gain'),gainVal=document.getElementById('gainVal');
+  const kSl=document.getElementById('kval'),kValTxt=document.getElementById('kValTxt');
+  const statusEl=document.getElementById('status'),SF=window.ScaleFunction;
 
-    // ── 帯域・State ─────────────────────────────────────────────────────
-    const BANDS=[{lo:20,hi:200,color:[220,0,0]},{lo:200,hi:2000,color:[0,45,255]},{lo:2000,hi:22050,color:[0,80,85]}];
-    const state={mode:'qam',taps:1023,trail:1152,gain:2.5};
+  // ── 帯域・State ────────────────────────────────────────────────────────
+  const BANDS=[{lo:20,hi:200,color:[220,0,0]},{lo:200,hi:2000,color:[0,45,255]},{lo:2000,hi:22050,color:[0,80,85]}];
+  const state={mode:'qam',taps:1023,trail:1152,gain:2.5};
 
-    // ── リングバッファ ───────────────────────────────────────────────────
-    const MAX_RING=4096,RING_MASK=MAX_RING-1;
-    const rings=BANDS.map(()=>({I:new Float32Array(MAX_RING),Q:new Float32Array(MAX_RING),head:0,len:0,
-      clear(){this.head=0;this.len=0;this.I.fill(0);this.Q.fill(0);}}));
+  // ── リングバッファ ──────────────────────────────────────────────────────
+  const MAX_RING=4096,RING_MASK=MAX_RING-1;
+  const rings=BANDS.map(()=>({I:new Float32Array(MAX_RING),Q:new Float32Array(MAX_RING),head:0,len:0,
+    clear(){this.head=0;this.len=0;this.I.fill(0);this.Q.fill(0);}}));
 
-    // ── Audio コンテキスト ───────────────────────────────────────────────
-    let audioCtx=null, workletReady=false, workletNode=null;
-    let fileMediaSrc=null, filePlayGain=null, activeStream=null, activeMode=null;
+  // ── Audio ──────────────────────────────────────────────────────────────
+  let audioCtx=null,workletReady=false,workletNode=null;
+  let fileMediaSrc=null,filePlayGain=null,activeStream=null,activeMode=null;
 
-    // ── メインスレッドで WASM バイナリをキャッシュフェッチ ───────────────
-    // ここが fetch の唯一の呼び出し元。window コンテキストなので必ず動く。
-    let wasmBinaryCache=null;
-    async function getWasmBinary(){
-      if(wasmBinaryCache) return wasmBinaryCache;
-      const url=new URL('./adaptive_scope.wasm',document.baseURI).href;
-      const res=await fetch(url);
-      if(!res.ok) throw new Error('WASM fetch '+res.status+': '+url);
-      wasmBinaryCache=await res.arrayBuffer();
-      return wasmBinaryCache;
+  // メインスレッドで WASM バイナリを一度だけフェッチしてキャッシュ
+  let wasmBinaryCache=null;
+  async function getWasmBinary(){
+    if(wasmBinaryCache) return wasmBinaryCache;
+    const url=new URL('./adaptive_scope.wasm',document.baseURI).href;
+    statusEl.textContent='WASM バイナリ取得中…';
+    const res=await fetch(url);
+    if(!res.ok) throw new Error('WASM fetch '+res.status);
+    wasmBinaryCache=await res.arrayBuffer();
+    return wasmBinaryCache;
+  }
+
+  function ensureCtx(){
+    if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive',sampleRate:48000});
+    return audioCtx;
+  }
+
+  // Worklet モジュールを登録 (一度だけ)
+  // JS URL のみ注入。ポリフィル (importScripts 偽装) で環境問題を解決する。
+  async function ensureWorklet(){
+    if(workletReady) return;
+    const jsUrl=new URL('./adaptive_scope.js',document.baseURI).href;
+    const src=WORKLET_TEMPLATE.replaceAll("'__WASM_JS_URL__'",JSON.stringify(jsUrl));
+    const blob=new Blob([src],{type:'application/javascript'});
+    const blobUrl=URL.createObjectURL(blob);
+    try{
+      await audioCtx.audioWorklet.addModule(blobUrl);
+      workletReady=true;
+    }finally{
+      URL.revokeObjectURL(blobUrl);
     }
+  }
 
-    function ensureCtx(){
-      if(!audioCtx){
-        audioCtx=new (window.AudioContext||window.webkitAudioContext)({
-          latencyHint:'interactive',
-          sampleRate:48000,  // WASM Params.fs=48000 に合わせる
-        });
-      }
-      return audioCtx;
-    }
+  function writeRing(bi,Ia,Qa,N){
+    const r=rings[bi];
+    for(let i=0;i<N;i++){r.I[r.head]=Ia[i];r.Q[r.head]=Qa[i];r.head=(r.head+1)&RING_MASK;if(r.len<MAX_RING)r.len++;}
+  }
 
-    // Worklet モジュール登録 (JS URL のみ注入、WASM バイナリは postMessage 経由)
-    async function ensureWorklet(){
-      if(workletReady) return;
-      const jsUrl=new URL('./adaptive_scope.js',document.baseURI).href;
-      const src=WORKLET_TEMPLATE.replace("'__WASM_JS_URL__'",JSON.stringify(jsUrl));
-      const blob=new Blob([src],{type:'application/javascript'});
-      const blobUrl=URL.createObjectURL(blob);
-      try{
-        await audioCtx.audioWorklet.addModule(blobUrl);
-        workletReady=true;
-      }finally{
-        URL.revokeObjectURL(blobUrl);
-      }
-    }
+  function teardown(){
+    if(workletNode){try{workletNode.disconnect();}catch(_){}workletNode.port.onmessage=null;workletNode=null;}
+    if(activeStream){activeStream.getTracks().forEach(t=>t.stop());activeStream=null;}
+    if(filePlayGain) filePlayGain.gain.setTargetAtTime(0,audioCtx.currentTime,.02);
+    if(!audioEl.paused) audioEl.pause();
+    playBtn.textContent='▶ 再生';
+    micBtn.textContent='🎤 マイク';micBtn.style.color='';
+    sysBtn.textContent='💻 システム音声';sysBtn.style.color='';
+    activeMode=null;
+  }
 
-    function writeRing(bi,Ia,Qa,N){
-      const r=rings[bi];
-      for(let i=0;i<N;i++){
-        r.I[r.head]=Ia[i]; r.Q[r.head]=Qa[i];
-        r.head=(r.head+1)&RING_MASK;
-        if(r.len<MAX_RING) r.len++;
-      }
-    }
+  // ── 解析グラフ接続 ──────────────────────────────────────────────────────
+  async function attachAnalysis(src,enablePlayback){
+    rings.forEach(r=>r.clear());
+    const wasmBinary=await getWasmBinary();
+    statusEl.textContent='Worklet 初期化中…';
 
-    function teardown(){
-      if(workletNode){try{workletNode.disconnect();}catch(_){}
-        workletNode.port.onmessage=null; workletNode=null;}
-      if(activeStream){activeStream.getTracks().forEach(t=>t.stop()); activeStream=null;}
-      if(filePlayGain) filePlayGain.gain.setTargetAtTime(0,audioCtx.currentTime,0.02);
-      if(!audioEl.paused) audioEl.pause();
-      playBtn.textContent='▶ 再生';
-      micBtn.textContent='🎤 マイク'; micBtn.style.color='';
-      sysBtn.textContent='💻 システム音声'; sysBtn.style.color='';
-      activeMode=null;
-    }
+    const node=new AudioWorkletNode(audioCtx,'iq-processor',{
+      numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],
+      channelCount:2,channelCountMode:'explicit',channelInterpretation:'discrete'});
+    const mute=audioCtx.createGain();mute.gain.value=0;
+    node.connect(mute);mute.connect(audioCtx.destination);
 
-    // ── 解析グラフ接続 ─────────────────────────────────────────────────
-    // 1) メインスレッドで WASM バイナリをフェッチ (fetch は window で動く)
-    // 2) AudioWorkletNode を生成
-    // 3) バイナリを postMessage で送信 → worklet 内で WebAssembly.instantiate(binary)
-    // 4) worklet から {type:'ready'} が届いたらソースを接続
-    async function attachAnalysis(src,enablePlayback){
-      rings.forEach(r=>r.clear());
-
-      // (1) WASM バイナリ取得 (キャッシュ済みなら即返り)
-      statusEl.textContent='WASM バイナリ取得中…';
-      const wasmBinary=await getWasmBinary();
-
-      // (2) WorkletNode 生成
-      const node=new AudioWorkletNode(audioCtx,'iq-processor',{
-        numberOfInputs:1, numberOfOutputs:1, outputChannelCount:[1],
-        channelCount:2, channelCountMode:'explicit', channelInterpretation:'discrete',
-      });
-      const mute=audioCtx.createGain();
-      mute.gain.value=0;
-      node.connect(mute);
-      mute.connect(audioCtx.destination);  // destination への経路がないと process() が呼ばれない
-
-      // (3) バイナリ送信 → worklet 初期化待ち
-      await new Promise((resolve,reject)=>{
-        const timer=setTimeout(()=>reject(new Error('Worklet init timeout')),15000);
-        node.port.onmessage=({data})=>{
-          if(data.type==='ready'){
-            clearTimeout(timer);
-            // 以降は I/Q データ受信ハンドラに切り替え
-            node.port.onmessage=({data})=>{
-              if(!data.I0) return;
-              writeRing(0,data.I0,data.Q0,data.I0.length);
-              writeRing(1,data.I1,data.Q1,data.I1.length);
-              writeRing(2,data.I2,data.Q2,data.I2.length);
-            };
-            resolve();
-          }else if(data.type==='error'){
-            clearTimeout(timer);
-            reject(new Error('Worklet WASM: '+data.message));
-          }
-        };
-        // ArrayBuffer を送る (transfer しない → コピー渡しでキャッシュ維持)
-        node.port.postMessage({type:'init',wasmBinary});
-      });
-
-      // (4) 準備完了 → ソース接続
-      src.connect(node);
-      workletNode=node;
-
-      if(enablePlayback&&filePlayGain)
-        filePlayGain.gain.setTargetAtTime(1,audioCtx.currentTime,0.02);
-    }
-
-    // ── ファイル音声 ────────────────────────────────────────────────────
-    fileInp.addEventListener('change',async()=>{
-      const f=fileInp.files[0]; if(!f) return;
-      try{
-        teardown(); ensureCtx();
-        if(audioCtx.state==='suspended') await audioCtx.resume();
-        statusEl.textContent='Worklet ロード中…';
-        await ensureWorklet();
-        if(!fileMediaSrc){
-          fileMediaSrc=audioCtx.createMediaElementSource(audioEl);
-          filePlayGain=audioCtx.createGain(); filePlayGain.gain.value=0;
-          fileMediaSrc.connect(filePlayGain); filePlayGain.connect(audioCtx.destination);
+    // WASM バイナリを送って初期化待ち
+    await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error('Worklet init timeout')),20000);
+      node.port.onmessage=({data})=>{
+        if(data.type==='ready'){
+          clearTimeout(timer);
+          node.port.onmessage=({data})=>{
+            if(!data.I0) return;
+            writeRing(0,data.I0,data.Q0,data.I0.length);
+            writeRing(1,data.I1,data.Q1,data.I1.length);
+            writeRing(2,data.I2,data.Q2,data.I2.length);
+          };
+          resolve();
+        }else if(data.type==='error'){
+          clearTimeout(timer);reject(new Error('Worklet: '+data.message));
         }
-        audioEl.src=URL.createObjectURL(f); audioEl.load();
-        await attachAnalysis(fileMediaSrc,true);
-        activeMode='file'; playBtn.disabled=false;
-        statusEl.textContent='ファイル読込完了 – ▶ 再生で開始';
-      }catch(ex){ statusEl.textContent='ファイル失敗: '+ex.message; console.error(ex); }
+      };
+      // コピー渡し (transfer しない) → キャッシュ維持
+      node.port.postMessage({type:'init',wasmBinary});
     });
 
-    playBtn.addEventListener('click',async()=>{
-      if(!audioCtx) return;
-      if(audioCtx.state==='suspended') await audioCtx.resume();
-      if(audioEl.paused){await audioEl.play(); playBtn.textContent='⏸ 停止';}
-      else{audioEl.pause(); playBtn.textContent='▶ 再生';}
-    });
-    audioEl.addEventListener('ended',()=>{playBtn.textContent='▶ 再生';});
+    src.connect(node);
+    workletNode=node;
+    if(enablePlayback&&filePlayGain) filePlayGain.gain.setTargetAtTime(1,audioCtx.currentTime,.02);
+  }
 
-    // ── マイク ──────────────────────────────────────────────────────────
-    micBtn.addEventListener('click',async()=>{
-      if(activeMode==='mic'){teardown();return;}
-      try{
-        teardown(); ensureCtx();
-        if(audioCtx.state==='suspended') await audioCtx.resume();
-        statusEl.textContent='Worklet ロード中…';
-        await ensureWorklet();
-        const stream=await navigator.mediaDevices.getUserMedia({
-          audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
-        activeStream=stream;
-        const src=audioCtx.createMediaStreamSource(stream);
-        await attachAnalysis(src,false);  // ← destination へ送らない (エコー防止)
-        activeMode='mic';
-        micBtn.textContent='⏹ マイク停止'; micBtn.style.color='#ff5050';
-        statusEl.textContent='マイク入力中 | AudioWorklet+WASM | ミュート中 (エコー防止)';
-      }catch(ex){ statusEl.textContent='マイク失敗: '+ex.message; console.error(ex); }
-    });
+  // ── ファイル ────────────────────────────────────────────────────────────
+  fileInp.addEventListener('change',async()=>{
+    const f=fileInp.files[0];if(!f) return;
+    try{
+      teardown();ensureCtx();if(audioCtx.state==='suspended') await audioCtx.resume();
+      await ensureWorklet();
+      if(!fileMediaSrc){
+        fileMediaSrc=audioCtx.createMediaElementSource(audioEl);
+        filePlayGain=audioCtx.createGain();filePlayGain.gain.value=0;
+        fileMediaSrc.connect(filePlayGain);filePlayGain.connect(audioCtx.destination);}
+      audioEl.src=URL.createObjectURL(f);audioEl.load();
+      await attachAnalysis(fileMediaSrc,true);
+      activeMode='file';playBtn.disabled=false;
+      statusEl.textContent='ファイル読込完了 – ▶ 再生で開始';
+    }catch(ex){statusEl.textContent='ファイル失敗: '+ex.message;console.error(ex);}
+  });
+  playBtn.addEventListener('click',async()=>{
+    if(!audioCtx) return;if(audioCtx.state==='suspended') await audioCtx.resume();
+    if(audioEl.paused){await audioEl.play();playBtn.textContent='⏸ 停止';}
+    else{audioEl.pause();playBtn.textContent='▶ 再生';}
+  });
+  audioEl.addEventListener('ended',()=>{playBtn.textContent='▶ 再生';});
 
-    // ── システム音声 ────────────────────────────────────────────────────
-    // destination へは絶対に送らない → Comb フィルタ防止
-    sysBtn.addEventListener('click',async()=>{
-      if(activeMode==='system'){teardown();return;}
-      try{
-        teardown(); ensureCtx();
-        if(audioCtx.state==='suspended') await audioCtx.resume();
-        statusEl.textContent='Worklet ロード中…';
-        await ensureWorklet();
-        let stream;
-        try{
-          stream=await navigator.mediaDevices.getDisplayMedia({
-            audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
-        }catch{
-          stream=await navigator.mediaDevices.getDisplayMedia({
-            audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},
-            video:{width:1,height:1,frameRate:1}});
-          stream.getVideoTracks().forEach(t=>t.stop());
-        }
-        if(!stream.getAudioTracks().length){
-          statusEl.textContent='システム音声: トラック取得不可'; return;}
-        activeStream=stream;
-        const src=audioCtx.createMediaStreamSource(stream);
-        await attachAnalysis(src,false);
-        activeMode='system';
-        sysBtn.textContent='⏹ システム停止'; sysBtn.style.color='#00e5ff';
-        statusEl.textContent='システム音声入力中 | AudioWorklet+WASM | Comb防止ミュート済';
-      }catch(ex){ statusEl.textContent='システム音声失敗: '+ex.message; console.error(ex); }
-    });
+  // ── マイク ──────────────────────────────────────────────────────────────
+  micBtn.addEventListener('click',async()=>{
+    if(activeMode==='mic'){teardown();return;}
+    try{
+      teardown();ensureCtx();if(audioCtx.state==='suspended') await audioCtx.resume();
+      await ensureWorklet();
+      const stream=await navigator.mediaDevices.getUserMedia(
+        {audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+      activeStream=stream;
+      await attachAnalysis(audioCtx.createMediaStreamSource(stream),false);
+      activeMode='mic';micBtn.textContent='⏹ マイク停止';micBtn.style.color='#ff5050';
+      statusEl.textContent='マイク入力中 | AudioWorklet+WASM | ミュート中 (エコー防止)';
+    }catch(ex){statusEl.textContent='マイク失敗: '+ex.message;console.error(ex);}
+  });
 
-    // ── コントロール ────────────────────────────────────────────────────
-    modeSel.addEventListener('change',()=>(state.mode=modeSel.value));
-    tapsSel.addEventListener('change',()=>{state.taps=parseInt(tapsSel.value,10);});
-    trailSl.addEventListener('input',()=>{state.trail=parseInt(trailSl.value,10);trailVal.textContent=state.trail;});
-    gainSl.addEventListener('input',()=>{state.gain=parseInt(gainSl.value,10)/100;gainVal.textContent=state.gain.toFixed(1)+'x';});
-    kSl.addEventListener('input',()=>{SF.setK(parseInt(kSl.value,10));kValTxt.textContent=kSl.value;});
+  // ── システム音声 ────────────────────────────────────────────────────────
+  sysBtn.addEventListener('click',async()=>{
+    if(activeMode==='system'){teardown();return;}
+    try{
+      teardown();ensureCtx();if(audioCtx.state==='suspended') await audioCtx.resume();
+      await ensureWorklet();
+      let stream;
+      try{stream=await navigator.mediaDevices.getDisplayMedia(
+        {audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});}
+      catch{stream=await navigator.mediaDevices.getDisplayMedia(
+        {audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:{width:1,height:1,frameRate:1}});
+        stream.getVideoTracks().forEach(t=>t.stop());}
+      if(!stream.getAudioTracks().length){statusEl.textContent='システム音声: トラック取得不可';return;}
+      activeStream=stream;
+      await attachAnalysis(audioCtx.createMediaStreamSource(stream),false);
+      activeMode='system';sysBtn.textContent='⏹ システム停止';sysBtn.style.color='#00e5ff';
+      statusEl.textContent='システム音声入力中 | AudioWorklet+WASM | Comb防止ミュート済';
+    }catch(ex){statusEl.textContent='システム音声失敗: '+ex.message;console.error(ex);}
+  });
 
-    // ── Canvas 描画 ─────────────────────────────────────────────────────
-    function resize(){
-      const dpr=Math.min(window.devicePixelRatio||1,2);
-      const r=cv.getBoundingClientRect();
-      cv.width=Math.max(1,Math.floor(r.width*dpr));
-      cv.height=Math.max(1,Math.floor(r.height*dpr));
+  // ── コントロール ────────────────────────────────────────────────────────
+  modeSel.addEventListener('change',()=>(state.mode=modeSel.value));
+  tapsSel.addEventListener('change',()=>{state.taps=parseInt(tapsSel.value,10);});
+  trailSl.addEventListener('input',()=>{state.trail=parseInt(trailSl.value,10);trailVal.textContent=state.trail;});
+  gainSl.addEventListener('input',()=>{state.gain=parseInt(gainSl.value,10)/100;gainVal.textContent=state.gain.toFixed(1)+'x';});
+  kSl.addEventListener('input',()=>{SF.setK(parseInt(kSl.value,10));kValTxt.textContent=kSl.value;});
+
+  // ── 描画 ────────────────────────────────────────────────────────────────
+  function resize(){const dpr=Math.min(window.devicePixelRatio||1,2),r=cv.getBoundingClientRect();cv.width=Math.max(1,Math.floor(r.width*dpr));cv.height=Math.max(1,Math.floor(r.height*dpr));}
+  window.addEventListener('resize',resize);
+
+  function toXY(I,Q,cx,cy,R){const mag=Math.hypot(I,Q),ph=Math.atan2(Q,I),r=SF.scaleFunction_y(Math.min(1,mag*state.gain));return{x:cx+Math.cos(ph)*r*R,y:cy-Math.sin(ph)*r*R};}
+
+  let layers=null;
+  function ensureLayers(W,H){
+    if(!layers) layers=BANDS.map(()=>document.createElement('canvas').getContext('2d'));
+    for(const l of layers) if(l.canvas.width!==W||l.canvas.height!==H){l.canvas.width=W;l.canvas.height=H;}
+  }
+  function drawTrail(tgt,bi,count,color,cx,cy,R){
+    const ring=rings[bi];let prevX=null,prevY=null;
+    for(let i=0;i<count;i++){
+      const idx=(ring.head-count+i+MAX_RING)&RING_MASK;
+      const p=toXY(ring.I[idx],ring.Q[idx],cx,cy,R);
+      const age=i/count,alpha=age*age*.92+.03;
+      if(prevX!==null){tgt.strokeStyle=`rgba(${color[0]},${color[1]},${color[2]},${alpha})`;tgt.lineWidth=.7+age*2;tgt.beginPath();tgt.moveTo(prevX,prevY);tgt.lineTo(p.x,p.y);tgt.stroke();}
+      prevX=p.x;prevY=p.y;
     }
-    window.addEventListener('resize',resize);
+    if(prevX!==null){tgt.fillStyle=`rgba(${color[0]},${color[1]},${color[2]},1)`;tgt.beginPath();tgt.arc(prevX,prevY,2.4,0,Math.PI*2);tgt.fill();}
+  }
 
-    function toXY(I,Q,cx,cy,R){
-      const mag=Math.hypot(I,Q),ph=Math.atan2(Q,I);
-      const r=SF.scaleFunction_y(Math.min(1,mag*state.gain));
-      return{x:cx+Math.cos(ph)*r*R,y:cy-Math.sin(ph)*r*R};
+  let lastT=performance.now(),fps=120;
+  function draw(){
+    const now=performance.now();fps=fps*.9+(1000/Math.max(1,now-lastT))*.1;lastT=now;
+    const W=cv.width,H=cv.height;ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+    const cx=W*.5,cy=H*.5,R=Math.min(W,H)*.46;
+    ensureLayers(W,H);
+    for(const l of layers){l.clearRect(0,0,W,H);l.globalCompositeOperation='lighter';l.lineCap='round';}
+    if(activeMode!==null){
+      for(let bi=2;bi>=0;bi--){const count=Math.min(rings[bi].len,state.trail);if(count<2) continue;drawTrail(layers[bi],bi,count,BANDS[bi].color,cx,cy,R);}
     }
-
-    let layers=null;
-    function ensureLayers(W,H){
-      if(!layers) layers=BANDS.map(()=>document.createElement('canvas').getContext('2d'));
-      for(const l of layers){if(l.canvas.width!==W||l.canvas.height!==H){l.canvas.width=W;l.canvas.height=H;}}
-    }
-
-    function drawTrail(tgt,bi,count,color,cx,cy,R){
-      const ring=rings[bi]; let prevX=null,prevY=null;
-      for(let i=0;i<count;i++){
-        const idx=(ring.head-count+i+MAX_RING)&RING_MASK;
-        const p=toXY(ring.I[idx],ring.Q[idx],cx,cy,R);
-        const age=i/count, alpha=age*age*0.92+0.03;
-        if(prevX!==null){
-          tgt.strokeStyle=`rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
-          tgt.lineWidth=0.7+age*2.0;
-          tgt.beginPath();tgt.moveTo(prevX,prevY);tgt.lineTo(p.x,p.y);tgt.stroke();
-        }
-        prevX=p.x; prevY=p.y;
-      }
-      if(prevX!==null){
-        tgt.fillStyle=`rgba(${color[0]},${color[1]},${color[2]},1)`;
-        tgt.beginPath();tgt.arc(prevX,prevY,2.4,0,Math.PI*2);tgt.fill();
-      }
-    }
-
-    let lastT=performance.now(),fps=120;
-    function draw(){
-      const now=performance.now();
-      fps=fps*0.9+(1000/Math.max(1,now-lastT))*0.1; lastT=now;
-      const W=cv.width,H=cv.height;
-      ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
-      const cx=W*0.5,cy=H*0.5,R=Math.min(W,H)*0.46;
-      ensureLayers(W,H);
-      for(const l of layers){l.clearRect(0,0,W,H);l.globalCompositeOperation='lighter';l.lineCap='round';}
-      if(activeMode!==null){
-        for(let bi=2;bi>=0;bi--){
-          const count=Math.min(rings[bi].len,state.trail);
-          if(count<2) continue;
-          drawTrail(layers[bi],bi,count,BANDS[bi].color,cx,cy,R);
-        }
-      }
-      ctx.globalCompositeOperation='source-over';
-      ctx.drawImage(layers[2].canvas,0,0);
-      ctx.drawImage(layers[1].canvas,0,0);
-      ctx.drawImage(layers[0].canvas,0,0);
-      ctx.strokeStyle='rgba(55,55,66,0.5)'; ctx.lineWidth=1;
-      ctx.beginPath();ctx.moveTo(cx-R,cy);ctx.lineTo(cx+R,cy);ctx.moveTo(cx,cy-R);ctx.lineTo(cx,cy+R);ctx.stroke();
-      ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.stroke();
-      const ML={file:'ファイル',mic:'マイク',system:'システム音声'};
-      statusEl.textContent=activeMode
-        ?`AudioWorklet+WASM | ${ML[activeMode]} | Lh=65/LR4 | K=${SF.K} | trail=${state.trail} | ${fps.toFixed(0)} fps`
-        :'音声ソースを選択してください (ファイル / マイク / システム音声)';
-      requestAnimationFrame(draw);
-    }
-
-    resize();
+    ctx.globalCompositeOperation='source-over';
+    ctx.drawImage(layers[2].canvas,0,0);ctx.drawImage(layers[1].canvas,0,0);ctx.drawImage(layers[0].canvas,0,0);
+    ctx.strokeStyle='rgba(55,55,66,.5)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(cx-R,cy);ctx.lineTo(cx+R,cy);ctx.moveTo(cx,cy-R);ctx.lineTo(cx,cy+R);ctx.stroke();
+    ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.stroke();
+    const ML={file:'ファイル',mic:'マイク',system:'システム音声'};
+    if(!activeMode) return requestAnimationFrame(draw);
+    statusEl.textContent=`AudioWorklet+WASM | ${ML[activeMode]} | Lh=65/LR4 | K=${SF.K} | trail=${state.trail} | ${fps.toFixed(0)} fps`;
     requestAnimationFrame(draw);
+  }
+
+  resize();requestAnimationFrame(draw);
   </script>
 </body>
 </html>
