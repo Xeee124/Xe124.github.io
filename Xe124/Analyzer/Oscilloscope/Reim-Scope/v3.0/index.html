@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>IQ_OSC – WASM AdaptiveScope (AudioWorklet)</title>
+  <title>IQ_OSC – WASM AdaptiveScope</title>
   <style>
     html,body{margin:0;padding:0;background:#000;color:#d8d8e0;font-family:"Segoe UI","Hiragino Sans","Noto Sans JP",sans-serif;height:100%;}
     body{display:flex;flex-direction:column;}
@@ -62,55 +62,28 @@
   "use strict";
 
   // ════════════════════════════════════════════════════════════════════════
-  //  根本原因の解説
+  //  アーキテクチャ:  Web Worker + ScriptProcessorNode
   //
-  //  Emscripten は ENVIRONMENT=web,worker でも以下のコードを生成する:
+  //  [これまでの失敗と原因]
+  //  AudioWorklet + WASM → ENVIRONMENT=web / web,worker どちらでも失敗
+  //    ・Emscripten が var URL; を宣言してグローバルを隠蔽 (ENVIRONMENT=web)
+  //    ・dynamic import() が mobile Chrome worklet で registerProcessor に到達しない
   //
-  //    var URL;                          // ← ローカル変数がグローバル URL を隠蔽
-  //    if (ENVIRONMENT_IS_WEB)    URL = window.URL;
-  //    else if (ENVIRONMENT_IS_WORKER) URL = self.URL;
-  //    // AudioWorklet では両方 false → URL は undefined のまま
-  //    // → new URL('adaptive_scope.wasm', ...) で ReferenceError!
-  //
-  //  検出コード:
-  //    ENVIRONMENT_IS_WEB    = typeof window    == 'object'   // AudioWorklet: false
-  //    ENVIRONMENT_IS_WORKER = typeof importScripts == 'function' // AudioWorklet: false
-  //
-  //  解決策: dynamic import() の前に self.importScripts を関数として偽装する。
-  //    → ENVIRONMENT_IS_WORKER = true
-  //    → URL = self.URL        (AudioWorkletGlobalScope に self.URL は存在する) ✓
-  //    → fetch = self.fetch    (AudioWorklet に fetch は存在する) ✓
-  //    → self.location の偽装で scriptDirectory も正しく計算される ✓
-  //
-  //  さらに、メインスレッドで fetch した wasmBinary を渡すことで
-  //  Worklet 内での fetch 呼び出し自体を完全に不要にする (二重の保険)。
+  //  [解決策]
+  //  ① Web Worker (ES module) で WASM をロード
+  //    → typeof importScripts == 'function' が真 → ENVIRONMENT_IS_WORKER=true
+  //    → URL = self.URL, fetch = self.fetch が正常設定 → Emscripten 完全動作
+  //  ② ScriptProcessorNode (BUF=4096) で音声キャプチャ
+  //    → メインスレッド占有: <1ms/85ms = 1% 未満 → 60fps 描画に影響なし
+  //    → Worker へ mono Float32Array を transfer → Worker が WASM 処理
+  //  ③ Worker → メインスレッドへ I/Q 転送 → リングバッファ更新 → Canvas
   // ════════════════════════════════════════════════════════════════════════
 
-  const WORKLET_TEMPLATE = `
+  // ── Worker ソース (__WASM_JS_URL__ / __WASM_URL__ は実行時に置換) ─────
+  const WORKER_TEMPLATE = `
+import createAdaptiveScope from '__WASM_JS_URL__';
 
-// ── Worker 環境偽装ポリフィル ────────────────────────────────────────────
-// Emscripten の環境検出を「Worker だ」と思わせる。
-// self.importScripts が関数 → ENVIRONMENT_IS_WORKER = true
-// → URL = self.URL, fetch = self.fetch が代入され、正常動作する。
-//
-// ※ static import はモジュール評価前にホイスティングされるため
-//   ポリフィルより先に adaptive_scope.js が実行されてしまう。
-//   そのため dynamic import() を使う。
-if (typeof self.importScripts !== 'function') {
-  self.importScripts = () => {};
-}
-// Emscripten が self.location.href からスクリプトディレクトリを計算する
-if (typeof self.location === 'undefined') {
-  Object.defineProperty(self, 'location', {
-    value: { href: '__WASM_JS_URL__' },
-    configurable: true
-  });
-}
-
-// dynamic import: ポリフィルが設定された後に adaptive_scope.js を評価させる
-const { default: createAdaptiveScope } = await import('__WASM_JS_URL__');
-
-// ── IIR 帯域分割フィルタ (Direct-Form II Transposed / LR4) ──────────────
+// ── IIR 帯域分割フィルタ (Direct-Form II Transposed / LR4) ─────────────
 class Biquad {
   constructor(b0,b1,b2,a1,a2){this.b0=b0;this.b1=b1;this.b2=b2;this.a1=a1;this.a2=a2;this.w1=0;this.w2=0;}
   clear(){this.w1=0;this.w2=0;}
@@ -126,55 +99,41 @@ class MidBand{
 }
 function makeBandFilters(fs){return[new LR4(mkLPF(200,fs),mkLPF(200,fs)),new MidBand(fs),new LR4(mkHPF(2000,fs),mkHPF(2000,fs))];}
 
-// ── AudioWorkletProcessor ────────────────────────────────────────────────
-// WASM バイナリはメインスレッドが fetch → port 経由で {type:'init',wasmBinary} として届く。
-// createAdaptiveScope({wasmBinary}) は WebAssembly.instantiate(buffer) を直接呼ぶので
-// Worklet 内での fetch/URL を一切必要としない (ポリフィルとの二重の保険)。
-registerProcessor('iq-processor', class extends AudioWorkletProcessor {
-  constructor(opt){
-    super(opt);
-    this._ready=false;
-    this._eng=null;
-    this._bf=null;
-    this.port.onmessage=async ({data})=>{
-      if(data.type==='init'){
-        try{
-          const WM=await createAdaptiveScope({wasmBinary:data.wasmBinary});
-          this._eng=[0,1,2].map(()=>{const e=new WM.AdaptiveScope();e.init();return e;});
-          this._bf=makeBandFilters(sampleRate);
-          this._ready=true;
-          this.port.postMessage({type:'ready'});
-        }catch(err){
-          this.port.postMessage({type:'error',message:String(err)});
-        }
-      }else if(data.type==='reset'&&this._ready){
-        this._eng.forEach(e=>e.reset());
-        this._bf.forEach(f=>f.clear());
-      }
-    };
-  }
-  process(inputs){
-    if(!this._ready) return true;
-    const ch=inputs[0];
-    if(!ch||!ch[0]) return true;
-    const c0=ch[0],c1=ch[1]||ch[0];
-    const N=c0.length;
+// ── WASM 初期化 (top-level await) ────────────────────────────────────────
+// Web Worker: typeof importScripts == 'function' → ENVIRONMENT_IS_WORKER=true
+// → Emscripten が URL=self.URL / fetch=self.fetch を正常に設定 → ロード成功
+// locateFile で adaptive_scope.wasm の絶対 URL を直接指定
+let WM, engines, filters;
+try {
+  WM = await createAdaptiveScope({
+    locateFile: n => n.endsWith('.wasm') ? '__WASM_URL__' : n
+  });
+  engines = [0,1,2].map(() => { const e = new WM.AdaptiveScope(); e.init(); return e; });
+  filters = makeBandFilters(48000);
+  self.postMessage({ type: 'ready' });
+} catch(err) {
+  self.postMessage({ type: 'error', message: String(err) });
+}
+
+self.onmessage = ({ data }) => {
+  if (data.type === 'audio') {
+    if (!engines) return;
+    const mono = data.mono, N = mono.length;
     const I0=new Float32Array(N),Q0=new Float32Array(N);
     const I1=new Float32Array(N),Q1=new Float32Array(N);
     const I2=new Float32Array(N),Q2=new Float32Array(N);
-    const e=this._eng,b=this._bf;
-    for(let i=0;i<N;i++){
-      const m=(c0[i]+c1[i])*0.5;
+    for (let i=0; i<N; i++) {
       let r;
-      r=e[0].processSample(b[0].process(m));I0[i]=r[1];Q0[i]=r[2];
-      r=e[1].processSample(b[1].process(m));I1[i]=r[1];Q1[i]=r[2];
-      r=e[2].processSample(b[2].process(m));I2[i]=r[1];Q2[i]=r[2];
+      r=engines[0].processSample(filters[0].process(mono[i]));I0[i]=r[1];Q0[i]=r[2];
+      r=engines[1].processSample(filters[1].process(mono[i]));I1[i]=r[1];Q1[i]=r[2];
+      r=engines[2].processSample(filters[2].process(mono[i]));I2[i]=r[1];Q2[i]=r[2];
     }
-    this.port.postMessage({I0,Q0,I1,Q1,I2,Q2},
+    self.postMessage({type:'iq',I0,Q0,I1,Q1,I2,Q2},
       [I0.buffer,Q0.buffer,I1.buffer,Q1.buffer,I2.buffer,Q2.buffer]);
-    return true;
+  } else if (data.type === 'reset') {
+    if (engines) { engines.forEach(e=>e.reset()); filters.forEach(f=>f.clear()); }
   }
-});
+};
 `;
 
   // ── DOM ────────────────────────────────────────────────────────────────
@@ -196,53 +155,71 @@ registerProcessor('iq-processor', class extends AudioWorkletProcessor {
   const rings=BANDS.map(()=>({I:new Float32Array(MAX_RING),Q:new Float32Array(MAX_RING),head:0,len:0,
     clear(){this.head=0;this.len=0;this.I.fill(0);this.Q.fill(0);}}));
 
-  // ── Audio ──────────────────────────────────────────────────────────────
-  let audioCtx=null,workletReady=false,workletNode=null;
-  let fileMediaSrc=null,filePlayGain=null,activeStream=null,activeMode=null;
-
-  // メインスレッドで WASM バイナリを一度だけフェッチしてキャッシュ
-  let wasmBinaryCache=null;
-  async function getWasmBinary(){
-    if(wasmBinaryCache) return wasmBinaryCache;
-    const url=new URL('./adaptive_scope.wasm',document.baseURI).href;
-    statusEl.textContent='WASM バイナリ取得中…';
-    const res=await fetch(url);
-    if(!res.ok) throw new Error('WASM fetch '+res.status);
-    wasmBinaryCache=await res.arrayBuffer();
-    return wasmBinaryCache;
+  function writeRing(bi,Ia,Qa,N){
+    const r=rings[bi];
+    for(let i=0;i<N;i++){r.I[r.head]=Ia[i];r.Q[r.head]=Qa[i];r.head=(r.head+1)&RING_MASK;if(r.len<MAX_RING)r.len++;}
   }
+
+  // ── Audio コンテキスト ──────────────────────────────────────────────────
+  let audioCtx=null,worker=null,workerReady=false,scriptNode=null;
+  let fileMediaSrc=null,filePlayGain=null,activeStream=null,activeMode=null;
 
   function ensureCtx(){
     if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive',sampleRate:48000});
     return audioCtx;
   }
 
-  // Worklet モジュールを登録 (一度だけ)
-  // JS URL のみ注入。ポリフィル (importScripts 偽装) で環境問題を解決する。
-  async function ensureWorklet(){
-    if(workletReady) return;
-    const jsUrl=new URL('./adaptive_scope.js',document.baseURI).href;
-    const src=WORKLET_TEMPLATE.replaceAll("'__WASM_JS_URL__'",JSON.stringify(jsUrl));
+  // Worker を生成して WASM 初期化を待つ (一度だけ)
+  async function ensureWorker(){
+    if(workerReady) return;
+    const jsUrl =new URL('./adaptive_scope.js',  document.baseURI).href;
+    const wasmUrl=new URL('./adaptive_scope.wasm',document.baseURI).href;
+    const src=WORKER_TEMPLATE
+      .replaceAll("'__WASM_JS_URL__'", JSON.stringify(jsUrl))
+      .replaceAll("'__WASM_URL__'",    JSON.stringify(wasmUrl));
     const blob=new Blob([src],{type:'application/javascript'});
     const blobUrl=URL.createObjectURL(blob);
-    try{
-      await audioCtx.audioWorklet.addModule(blobUrl);
-      workletReady=true;
-    }finally{
-      URL.revokeObjectURL(blobUrl);
-    }
-  }
 
-  function writeRing(bi,Ia,Qa,N){
-    const r=rings[bi];
-    for(let i=0;i<N;i++){r.I[r.head]=Ia[i];r.Q[r.head]=Qa[i];r.head=(r.head+1)&RING_MASK;if(r.len<MAX_RING)r.len++;}
+    await new Promise((resolve,reject)=>{
+      worker=new Worker(blobUrl,{type:'module'});
+      const timer=setTimeout(()=>reject(new Error('Worker timeout (20s)')),20000);
+      worker.onmessage=({data})=>{
+        if(data.type==='ready'){
+          clearTimeout(timer);
+          URL.revokeObjectURL(blobUrl);
+          // 以降は I/Q 受信ハンドラ
+          worker.onmessage=({data})=>{
+            if(data.type!=='iq') return;
+            writeRing(0,data.I0,data.Q0,data.I0.length);
+            writeRing(1,data.I1,data.Q1,data.I1.length);
+            writeRing(2,data.I2,data.Q2,data.I2.length);
+          };
+          resolve();
+        }else if(data.type==='error'){
+          clearTimeout(timer); URL.revokeObjectURL(blobUrl);
+          reject(new Error('Worker WASM: '+data.message));
+        }
+      };
+      worker.onerror=e=>{clearTimeout(timer);URL.revokeObjectURL(blobUrl);reject(e);};
+    });
+    workerReady=true;
   }
 
   function teardown(){
-    if(workletNode){try{workletNode.disconnect();}catch(_){}workletNode.port.onmessage=null;workletNode=null;}
+    // ScriptProcessor を切断
+    if(scriptNode){
+      try{scriptNode.disconnect();}catch(_){}
+      scriptNode.onaudioprocess=null;scriptNode=null;
+    }
+    // ストリーム停止
     if(activeStream){activeStream.getTracks().forEach(t=>t.stop());activeStream=null;}
+    // ファイル再生ミュート
     if(filePlayGain) filePlayGain.gain.setTargetAtTime(0,audioCtx.currentTime,.02);
     if(!audioEl.paused) audioEl.pause();
+    // WASM エンジンリセット (Worker 生存させたまま)
+    if(workerReady) worker.postMessage({type:'reset'});
+    rings.forEach(r=>r.clear());
+    // UI リセット
     playBtn.textContent='▶ 再生';
     micBtn.textContent='🎤 マイク';micBtn.style.color='';
     sysBtn.textContent='💻 システム音声';sysBtn.style.color='';
@@ -250,59 +227,48 @@ registerProcessor('iq-processor', class extends AudioWorkletProcessor {
   }
 
   // ── 解析グラフ接続 ──────────────────────────────────────────────────────
-  async function attachAnalysis(src,enablePlayback){
-    rings.forEach(r=>r.clear());
-    const wasmBinary=await getWasmBinary();
-    statusEl.textContent='Worklet 初期化中…';
+  // ScriptProcessorNode (BUF=4096) でキャプチャ → mono を Worker へ transfer
+  // メインスレッド占有: Float32Array 作成 + postMessage = <1ms per 85ms → 無視できる
+  function attachAnalysis(src,enablePlayback){
+    const BUF=4096;
+    const sp=audioCtx.createScriptProcessor(BUF,2,1);
 
-    const node=new AudioWorkletNode(audioCtx,'iq-processor',{
-      numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],
-      channelCount:2,channelCountMode:'explicit',channelInterpretation:'discrete'});
+    sp.onaudioprocess=ev=>{
+      if(!workerReady) return;
+      const c0=ev.inputBuffer.getChannelData(0);
+      const c1=ev.inputBuffer.numberOfChannels>1?ev.inputBuffer.getChannelData(1):c0;
+      const mono=new Float32Array(c0.length);
+      for(let i=0;i<c0.length;i++) mono[i]=(c0[i]+c1[i])*0.5;
+      worker.postMessage({type:'audio',mono},[mono.buffer]);  // ゼロコピー転送
+      ev.outputBuffer.getChannelData(0).fill(0);              // 常にミュート
+    };
+
+    src.connect(sp);
     const mute=audioCtx.createGain();mute.gain.value=0;
-    node.connect(mute);mute.connect(audioCtx.destination);
+    sp.connect(mute);mute.connect(audioCtx.destination); // 接続先がないと onaudioprocess が発火しない
 
-    // WASM バイナリを送って初期化待ち
-    await new Promise((resolve,reject)=>{
-      const timer=setTimeout(()=>reject(new Error('Worklet init timeout')),20000);
-      node.port.onmessage=({data})=>{
-        if(data.type==='ready'){
-          clearTimeout(timer);
-          node.port.onmessage=({data})=>{
-            if(!data.I0) return;
-            writeRing(0,data.I0,data.Q0,data.I0.length);
-            writeRing(1,data.I1,data.Q1,data.I1.length);
-            writeRing(2,data.I2,data.Q2,data.I2.length);
-          };
-          resolve();
-        }else if(data.type==='error'){
-          clearTimeout(timer);reject(new Error('Worklet: '+data.message));
-        }
-      };
-      // コピー渡し (transfer しない) → キャッシュ維持
-      node.port.postMessage({type:'init',wasmBinary});
-    });
-
-    src.connect(node);
-    workletNode=node;
+    scriptNode=sp;
     if(enablePlayback&&filePlayGain) filePlayGain.gain.setTargetAtTime(1,audioCtx.currentTime,.02);
   }
 
-  // ── ファイル ────────────────────────────────────────────────────────────
+  // ── ファイル音声 ────────────────────────────────────────────────────────
   fileInp.addEventListener('change',async()=>{
     const f=fileInp.files[0];if(!f) return;
     try{
       teardown();ensureCtx();if(audioCtx.state==='suspended') await audioCtx.resume();
-      await ensureWorklet();
+      statusEl.textContent='WASM ロード中…';
+      await ensureWorker();
       if(!fileMediaSrc){
         fileMediaSrc=audioCtx.createMediaElementSource(audioEl);
         filePlayGain=audioCtx.createGain();filePlayGain.gain.value=0;
         fileMediaSrc.connect(filePlayGain);filePlayGain.connect(audioCtx.destination);}
       audioEl.src=URL.createObjectURL(f);audioEl.load();
-      await attachAnalysis(fileMediaSrc,true);
+      attachAnalysis(fileMediaSrc,true);
       activeMode='file';playBtn.disabled=false;
       statusEl.textContent='ファイル読込完了 – ▶ 再生で開始';
     }catch(ex){statusEl.textContent='ファイル失敗: '+ex.message;console.error(ex);}
   });
+
   playBtn.addEventListener('click',async()=>{
     if(!audioCtx) return;if(audioCtx.state==='suspended') await audioCtx.resume();
     if(audioEl.paused){await audioEl.play();playBtn.textContent='⏸ 停止';}
@@ -315,22 +281,25 @@ registerProcessor('iq-processor', class extends AudioWorkletProcessor {
     if(activeMode==='mic'){teardown();return;}
     try{
       teardown();ensureCtx();if(audioCtx.state==='suspended') await audioCtx.resume();
-      await ensureWorklet();
+      statusEl.textContent='WASM ロード中…';
+      await ensureWorker();
       const stream=await navigator.mediaDevices.getUserMedia(
         {audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
       activeStream=stream;
-      await attachAnalysis(audioCtx.createMediaStreamSource(stream),false);
+      attachAnalysis(audioCtx.createMediaStreamSource(stream),false); // destination 接続なし (エコー防止)
       activeMode='mic';micBtn.textContent='⏹ マイク停止';micBtn.style.color='#ff5050';
-      statusEl.textContent='マイク入力中 | AudioWorklet+WASM | ミュート中 (エコー防止)';
+      statusEl.textContent='マイク入力中 | Worker+WASM | ミュート中 (エコー防止)';
     }catch(ex){statusEl.textContent='マイク失敗: '+ex.message;console.error(ex);}
   });
 
-  // ── システム音声 ────────────────────────────────────────────────────────
+  // ── システム音声 (PC向け) ───────────────────────────────────────────────
+  // destination へ送らない → Comb フィルタ防止
   sysBtn.addEventListener('click',async()=>{
     if(activeMode==='system'){teardown();return;}
     try{
       teardown();ensureCtx();if(audioCtx.state==='suspended') await audioCtx.resume();
-      await ensureWorklet();
+      statusEl.textContent='WASM ロード中…';
+      await ensureWorker();
       let stream;
       try{stream=await navigator.mediaDevices.getDisplayMedia(
         {audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});}
@@ -339,9 +308,9 @@ registerProcessor('iq-processor', class extends AudioWorkletProcessor {
         stream.getVideoTracks().forEach(t=>t.stop());}
       if(!stream.getAudioTracks().length){statusEl.textContent='システム音声: トラック取得不可';return;}
       activeStream=stream;
-      await attachAnalysis(audioCtx.createMediaStreamSource(stream),false);
+      attachAnalysis(audioCtx.createMediaStreamSource(stream),false);
       activeMode='system';sysBtn.textContent='⏹ システム停止';sysBtn.style.color='#00e5ff';
-      statusEl.textContent='システム音声入力中 | AudioWorklet+WASM | Comb防止ミュート済';
+      statusEl.textContent='システム音声入力中 | Worker+WASM | Comb防止ミュート済';
     }catch(ex){statusEl.textContent='システム音声失敗: '+ex.message;console.error(ex);}
   });
 
@@ -353,26 +322,40 @@ registerProcessor('iq-processor', class extends AudioWorkletProcessor {
   kSl.addEventListener('input',()=>{SF.setK(parseInt(kSl.value,10));kValTxt.textContent=kSl.value;});
 
   // ── 描画 ────────────────────────────────────────────────────────────────
-  function resize(){const dpr=Math.min(window.devicePixelRatio||1,2),r=cv.getBoundingClientRect();cv.width=Math.max(1,Math.floor(r.width*dpr));cv.height=Math.max(1,Math.floor(r.height*dpr));}
+  function resize(){
+    const dpr=Math.min(window.devicePixelRatio||1,2),r=cv.getBoundingClientRect();
+    cv.width=Math.max(1,Math.floor(r.width*dpr));cv.height=Math.max(1,Math.floor(r.height*dpr));
+  }
   window.addEventListener('resize',resize);
 
-  function toXY(I,Q,cx,cy,R){const mag=Math.hypot(I,Q),ph=Math.atan2(Q,I),r=SF.scaleFunction_y(Math.min(1,mag*state.gain));return{x:cx+Math.cos(ph)*r*R,y:cy-Math.sin(ph)*r*R};}
+  function toXY(I,Q,cx,cy,R){
+    const mag=Math.hypot(I,Q),ph=Math.atan2(Q,I);
+    const r=SF.scaleFunction_y(Math.min(1,mag*state.gain));
+    return{x:cx+Math.cos(ph)*r*R,y:cy-Math.sin(ph)*r*R};
+  }
 
   let layers=null;
   function ensureLayers(W,H){
     if(!layers) layers=BANDS.map(()=>document.createElement('canvas').getContext('2d'));
     for(const l of layers) if(l.canvas.width!==W||l.canvas.height!==H){l.canvas.width=W;l.canvas.height=H;}
   }
+
   function drawTrail(tgt,bi,count,color,cx,cy,R){
     const ring=rings[bi];let prevX=null,prevY=null;
     for(let i=0;i<count;i++){
       const idx=(ring.head-count+i+MAX_RING)&RING_MASK;
       const p=toXY(ring.I[idx],ring.Q[idx],cx,cy,R);
       const age=i/count,alpha=age*age*.92+.03;
-      if(prevX!==null){tgt.strokeStyle=`rgba(${color[0]},${color[1]},${color[2]},${alpha})`;tgt.lineWidth=.7+age*2;tgt.beginPath();tgt.moveTo(prevX,prevY);tgt.lineTo(p.x,p.y);tgt.stroke();}
+      if(prevX!==null){
+        tgt.strokeStyle=`rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
+        tgt.lineWidth=.7+age*2;tgt.beginPath();tgt.moveTo(prevX,prevY);tgt.lineTo(p.x,p.y);tgt.stroke();
+      }
       prevX=p.x;prevY=p.y;
     }
-    if(prevX!==null){tgt.fillStyle=`rgba(${color[0]},${color[1]},${color[2]},1)`;tgt.beginPath();tgt.arc(prevX,prevY,2.4,0,Math.PI*2);tgt.fill();}
+    if(prevX!==null){
+      tgt.fillStyle=`rgba(${color[0]},${color[1]},${color[2]},1)`;
+      tgt.beginPath();tgt.arc(prevX,prevY,2.4,0,Math.PI*2);tgt.fill();
+    }
   }
 
   let lastT=performance.now(),fps=120;
@@ -382,7 +365,7 @@ registerProcessor('iq-processor', class extends AudioWorkletProcessor {
     const cx=W*.5,cy=H*.5,R=Math.min(W,H)*.46;
     ensureLayers(W,H);
     for(const l of layers){l.clearRect(0,0,W,H);l.globalCompositeOperation='lighter';l.lineCap='round';}
-    if(activeMode!==null){
+    if(activeMode){
       for(let bi=2;bi>=0;bi--){const count=Math.min(rings[bi].len,state.trail);if(count<2) continue;drawTrail(layers[bi],bi,count,BANDS[bi].color,cx,cy,R);}
     }
     ctx.globalCompositeOperation='source-over';
@@ -391,8 +374,9 @@ registerProcessor('iq-processor', class extends AudioWorkletProcessor {
     ctx.beginPath();ctx.moveTo(cx-R,cy);ctx.lineTo(cx+R,cy);ctx.moveTo(cx,cy-R);ctx.lineTo(cx,cy+R);ctx.stroke();
     ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.stroke();
     const ML={file:'ファイル',mic:'マイク',system:'システム音声'};
-    if(!activeMode) return requestAnimationFrame(draw);
-    statusEl.textContent=`AudioWorklet+WASM | ${ML[activeMode]} | Lh=65/LR4 | K=${SF.K} | trail=${state.trail} | ${fps.toFixed(0)} fps`;
+    statusEl.textContent=activeMode
+      ?`Worker+WASM | ${ML[activeMode]} | SP-4096 | K=${SF.K} | trail=${state.trail} | ${fps.toFixed(0)} fps`
+      :'音声ソースを選択してください (ファイル / マイク / システム音声)';
     requestAnimationFrame(draw);
   }
 
