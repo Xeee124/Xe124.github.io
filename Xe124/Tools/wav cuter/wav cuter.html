@@ -1,0 +1,700 @@
+<!-- File: wav_silence_editor.html -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>WAV サンプル単位 無音編集ツール（ロスレス）</title>
+<style>
+    :root {
+        --primary: #2563eb;
+        --primary-dark: #1d4ed8;
+        --danger: #dc2626;
+        --bg: #f3f4f6;
+        --card-bg: #ffffff;
+        --border: #d1d5db;
+        --text: #111827;
+        --text-sub: #6b7280;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+        -webkit-text-size-adjust: 100%;
+    }
+    .container {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 16px 16px 64px;
+    }
+    h1 {
+        font-size: 1.3rem;
+        margin: 12px 0 4px;
+    }
+    .desc {
+        font-size: 0.85rem;
+        color: var(--text-sub);
+        line-height: 1.5;
+        margin-bottom: 16px;
+    }
+    .card {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .card h2 {
+        font-size: 1rem;
+        margin: 0 0 12px;
+        border-left: 4px solid var(--primary);
+        padding-left: 8px;
+    }
+    .file-label {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px dashed var(--primary);
+        border-radius: 10px;
+        padding: 20px 12px;
+        cursor: pointer;
+        color: var(--primary);
+        font-weight: 600;
+        font-size: 0.95rem;
+        min-height: 56px;
+        text-align: center;
+    }
+    .file-label input[type="file"] {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+    }
+    .info-box {
+        margin-top: 12px;
+        background: #f9fafb;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 0.85rem;
+        line-height: 1.6;
+        word-break: break-all;
+    }
+    .info-box .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 2px 0;
+        border-bottom: 1px dashed #e5e7eb;
+    }
+    .info-box .row:last-child { border-bottom: none; }
+    .info-box .k { color: var(--text-sub); flex-shrink: 0; }
+    .info-box .v { text-align: right; font-family: ui-monospace, monospace; }
+    .info-box .v.warn { color: var(--danger); font-weight: 700; }
+    .info-box .v.ok { color: #059669; font-weight: 700; }
+
+    .form-row {
+        margin-bottom: 14px;
+    }
+    .form-row > label {
+        display: block;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-bottom: 6px;
+        color: var(--text-sub);
+    }
+    .radio-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .radio-group label {
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 8px;
+        font-size: 0.85rem;
+        min-height: 44px;
+        cursor: pointer;
+        user-select: none;
+    }
+    .radio-group input { accent-color: var(--primary); width: 18px; height: 18px; }
+    input[type="number"] {
+        width: 100%;
+        padding: 12px;
+        font-size: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        min-height: 44px;
+    }
+    button, .btn-link {
+        display: block;
+        width: 100%;
+        text-align: center;
+        padding: 14px;
+        font-size: 1rem;
+        font-weight: 700;
+        border: none;
+        border-radius: 10px;
+        background: var(--primary);
+        color: #fff;
+        cursor: pointer;
+        min-height: 48px;
+        text-decoration: none;
+        box-sizing: border-box;
+    }
+    button:active, .btn-link:active { background: var(--primary-dark); }
+    button:disabled {
+        background: #9ca3af;
+        cursor: not-allowed;
+    }
+    .btn-secondary {
+        background: #374151;
+    }
+    .btn-secondary:active { background: #1f2937; }
+    #downloadLink {
+        margin-top: 12px;
+        background: #059669;
+    }
+    #hashBtn {
+        margin-top: 10px;
+    }
+    pre#log {
+        white-space: pre-wrap;
+        word-break: break-all;
+        font-size: 0.75rem;
+        background: #0b1220;
+        color: #d1d5db;
+        padding: 10px;
+        border-radius: 8px;
+        max-height: 220px;
+        overflow-y: auto;
+        margin: 0;
+    }
+    .error-text { color: var(--danger); font-weight: 600; }
+    .ok-text { color: #059669; font-weight: 600; }
+    .note {
+        font-size: 0.75rem;
+        color: var(--text-sub);
+        margin-top: 8px;
+        line-height: 1.5;
+    }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>WAV サンプル単位 無音編集ツール</h1>
+    <p class="desc">
+        192000Hz / 64bit float を含む任意のPCM・IEEE Float形式のWAVファイルに対応。
+        サンプル数はヘッダー記載値に頼らず、データ本体を先頭から実際に1フレームずつ
+        ループしてカウントします。音声サンプルの値は一切「数値として解釈・演算」せず
+        バイト列のコピー／挿入／削除のみを行うため、無音の追加と削除を何度往復させても
+        元データはビット単位で完全に復元されます。
+    </p>
+
+    <section class="card">
+        <label class="file-label" for="fileInput">
+            <input type="file" id="fileInput" accept=".wav,audio/wav,audio/x-wav,audio/wave">
+            <span id="fileLabelText">WAVファイルを選択</span>
+        </label>
+        <div id="fileInfo" class="info-box" hidden></div>
+    </section>
+
+    <section class="card" id="controls" hidden>
+        <h2>操作設定</h2>
+        <div class="form-row">
+            <label>操作</label>
+            <div class="radio-group">
+                <label><input type="radio" name="op" value="insert" checked> 無音を追加</label>
+                <label><input type="radio" name="op" value="remove"> サンプルを削除</label>
+            </div>
+        </div>
+        <div class="form-row">
+            <label>対象位置</label>
+            <div class="radio-group">
+                <label><input type="radio" name="pos" value="start"> 先頭のみ</label>
+                <label><input type="radio" name="pos" value="end"> 末尾のみ</label>
+                <label><input type="radio" name="pos" value="both" checked> 両端</label>
+            </div>
+        </div>
+        <div class="form-row">
+            <label for="sampleCount">サンプル数（1端あたり）</label>
+            <input type="number" id="sampleCount" min="1" step="1" value="1" inputmode="numeric">
+        </div>
+        <button id="processBtn">処理を実行</button>
+    </section>
+
+    <section class="card" id="resultBox" hidden>
+        <h2>結果</h2>
+        <div id="resultInfo" class="info-box"></div>
+        <a id="downloadLink" class="btn-link" download>ファイルをダウンロード</a>
+        <button id="hashBtn" class="btn-secondary">元ファイルとSHA-256を比較検証</button>
+        <div id="hashResult" class="info-box" hidden></div>
+        <p class="note">
+            検証方法：出力ファイルを再度読み込み、追加したサンプル数と同じ数を同じ位置から「削除」して
+            出力し直したものと、元ファイルのSHA-256ハッシュが完全一致することを確認してください。
+        </p>
+    </section>
+
+    <section class="card">
+        <h2>処理ログ</h2>
+        <pre id="log">準備完了。ファイルを選択してください。</pre>
+    </section>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    const logEl = document.getElementById('log');
+    function log(msg, isError) {
+        const time = new Date().toLocaleTimeString();
+        const line = `[${time}] ${msg}`;
+        logEl.textContent += '\n' + line;
+        logEl.scrollTop = logEl.scrollHeight;
+        if (isError) console.error(msg); else console.log(msg);
+    }
+
+    const fileInput = document.getElementById('fileInput');
+    const fileLabelText = document.getElementById('fileLabelText');
+    const fileInfoEl = document.getElementById('fileInfo');
+    const controlsEl = document.getElementById('controls');
+    const processBtn = document.getElementById('processBtn');
+    const sampleCountInput = document.getElementById('sampleCount');
+    const resultBox = document.getElementById('resultBox');
+    const resultInfoEl = document.getElementById('resultInfo');
+    const downloadLink = document.getElementById('downloadLink');
+    const hashBtn = document.getElementById('hashBtn');
+    const hashResultEl = document.getElementById('hashResult');
+
+    let originalArrayBuffer = null;
+    let parsedWav = null;
+    let currentFileName = 'audio.wav';
+    let lastOutputBuffer = null;
+
+    /* ---------- 実カウント処理（ヘッダー値を鵜呑みにしない） ---------- */
+
+    // データ本体を先頭から blockAlign バイトずつ実際に読み進めて
+    // フレーム(サンプル)を1つずつカウントする。除算による推定値は使わない。
+    function countSamplesByLoop(dataBytes, blockAlign) {
+        const totalBytes = dataBytes.length;
+        let count = 0;
+        let offset = 0;
+        while (offset + blockAlign <= totalBytes) {
+            count += 1;
+            offset += blockAlign;
+        }
+        const remainderBytes = totalBytes - offset;
+        return { count, remainderBytes, scannedBytes: offset };
+    }
+
+    /* ---------- WAV パーサー ---------- */
+
+    function readAscii(view, offset, len) {
+        let s = '';
+        for (let i = 0; i < len; i++) s += String.fromCharCode(view.getUint8(offset + i));
+        return s;
+    }
+
+    function parseWav(buffer) {
+        const view = new DataView(buffer);
+        if (buffer.byteLength < 12) throw new Error('ファイルが小さすぎます。');
+        if (readAscii(view, 0, 4) !== 'RIFF') throw new Error('RIFFヘッダーが見つかりません。WAVファイルではない可能性があります。');
+        if (readAscii(view, 8, 4) !== 'WAVE') throw new Error('WAVE識別子が見つかりません。');
+
+        const riffDeclaredSize = view.getUint32(4, true);
+
+        let offset = 12;
+        const chunks = [];
+        let fmt = null;
+        let dataChunk = null;
+
+        while (offset + 8 <= buffer.byteLength) {
+            const id = readAscii(view, offset, 4);
+            const declaredSize = view.getUint32(offset + 4, true);
+            const dataStart = offset + 8;
+
+            if (id === 'data') {
+                // dataチャンクはヘッダー値を無条件に信用しない。
+                // 実際にファイル内に存在するバイト数を上限として採用する。
+                const availableBytes = buffer.byteLength - dataStart;
+                let actualSize = declaredSize;
+
+                if (declaredSize > availableBytes) {
+                    log(`警告: "data"チャンクのヘッダー記載サイズ(${declaredSize.toLocaleString()} byte)がファイル実体(残り${availableBytes.toLocaleString()} byte)を超えています。ファイル終端までを実データとして採用します。`, true);
+                    actualSize = availableBytes;
+                }
+
+                dataChunk = {
+                    offset,
+                    dataStart,
+                    size: actualSize,
+                    declaredSize: declaredSize,
+                    sizeMismatch: (actualSize !== declaredSize)
+                };
+                chunks.push({ id, size: actualSize, offset, dataStart });
+
+                // data以降に他チャンクが続く可能性は理論上あるが、
+                // サイズ不整合が起きているファイルでは走査を継続しない。
+                if (dataChunk.sizeMismatch) break;
+
+                offset = dataStart + actualSize + (actualSize % 2);
+                continue;
+            }
+
+            if (dataStart + declaredSize > buffer.byteLength) {
+                log(`チャンク "${id}" のサイズがファイル範囲を超えています。走査を終了します。`, true);
+                break;
+            }
+
+            chunks.push({ id, size: declaredSize, offset, dataStart });
+
+            if (id === 'fmt ') {
+                const audioFormat = view.getUint16(dataStart, true);
+                const numChannels = view.getUint16(dataStart + 2, true);
+                const sampleRate = view.getUint32(dataStart + 4, true);
+                const byteRate = view.getUint32(dataStart + 8, true);
+                const blockAlign = view.getUint16(dataStart + 12, true);
+                const bitsPerSample = view.getUint16(dataStart + 14, true);
+
+                let realFormat = audioFormat;
+                let isFloat = (audioFormat === 3);
+
+                if (audioFormat === 0xFFFE && declaredSize >= 40) {
+                    const subFormat = view.getUint16(dataStart + 24, true);
+                    realFormat = subFormat;
+                    isFloat = (subFormat === 3);
+                }
+
+                fmt = {
+                    audioFormat, realFormat, isFloat,
+                    numChannels, sampleRate, byteRate,
+                    blockAlign, bitsPerSample
+                };
+            }
+
+            offset = dataStart + declaredSize + (declaredSize % 2);
+        }
+
+        if (!fmt) throw new Error('"fmt " チャンクが見つかりません。');
+        if (!dataChunk) throw new Error('"data" チャンクが見つかりません。');
+
+        validateFmt(fmt);
+
+        return { riffDeclaredSize, chunks, fmt, dataChunk };
+    }
+
+    function validateFmt(fmt) {
+        const isPcm = (fmt.realFormat === 1);
+        const isFloatFmt = (fmt.realFormat === 3);
+
+        if (!isPcm && !isFloatFmt) {
+            throw new Error(`未対応のフォーマットです (formatTag=${fmt.realFormat})。PCMまたはIEEE Floatのみ対応しています。`);
+        }
+
+        const validBits = isFloatFmt ? [32, 64] : [8, 16, 24, 32];
+        if (!validBits.includes(fmt.bitsPerSample)) {
+            throw new Error(`未対応のビット深度です: ${fmt.bitsPerSample}bit (${isFloatFmt ? 'Float' : 'PCM'})`);
+        }
+
+        const expectedBlockAlign = fmt.numChannels * (fmt.bitsPerSample / 8);
+        if (expectedBlockAlign !== fmt.blockAlign) {
+            log(`警告: blockAlignの不一致（ヘッダ=${fmt.blockAlign}, 算出値=${expectedBlockAlign}）。算出値を採用します。`, true);
+            fmt.blockAlign = expectedBlockAlign;
+        }
+    }
+
+    function getSilenceByteValue(fmt) {
+        const isPcm8 = (fmt.realFormat === 1) && (fmt.bitsPerSample === 8);
+        return isPcm8 ? 0x80 : 0x00;
+    }
+
+    /* ---------- データ操作（バイト列のみを扱い、数値化・演算は一切行わない） ---------- */
+
+    function buildNewDataBytes(originalDataBytes, blockAlign, silenceByte, operation, position, sampleCount) {
+        if (!Number.isInteger(sampleCount) || sampleCount <= 0) {
+            throw new Error('サンプル数は1以上の整数を指定してください。');
+        }
+
+        const countInfo = countSamplesByLoop(originalDataBytes, blockAlign);
+        if (countInfo.remainderBytes !== 0) {
+            throw new Error(`データ末尾に${countInfo.remainderBytes}byteの不完全なフレームが検出されました。ファイルが破損している可能性があります。`);
+        }
+
+        if (operation === 'insert') {
+            const silenceBlock = new Uint8Array(blockAlign * sampleCount).fill(silenceByte);
+            const parts = [];
+            if (position === 'start' || position === 'both') parts.push(silenceBlock);
+            parts.push(originalDataBytes);
+            if (position === 'end' || position === 'both') parts.push(silenceBlock);
+
+            let total = 0;
+            for (const p of parts) total += p.length;
+            const result = new Uint8Array(total);
+            let off = 0;
+            for (const p of parts) { result.set(p, off); off += p.length; }
+            return result;
+        }
+
+        if (operation === 'remove') {
+            const totalSamples = countInfo.count; // 実際に数えた値を使用
+            let startCut = 0, endCut = 0;
+            if (position === 'start') startCut = sampleCount;
+            else if (position === 'end') endCut = sampleCount;
+            else if (position === 'both') { startCut = sampleCount; endCut = sampleCount; }
+
+            if (startCut + endCut > totalSamples) {
+                throw new Error(`削除するサンプル数(合計${startCut + endCut})が実際に数えたデータの総サンプル数(${totalSamples})を超えています。`);
+            }
+
+            const startBytes = startCut * blockAlign;
+            const endBytes = endCut * blockAlign;
+            return originalDataBytes.slice(startBytes, originalDataBytes.length - endBytes);
+        }
+
+        throw new Error('不明な操作種別です。');
+    }
+
+    function buildWavFile(originalBuffer, parsed, newDataBytes) {
+        const { chunks, dataChunk } = parsed;
+        const originalBytes = new Uint8Array(originalBuffer);
+        const oldDataSize = dataChunk.size;
+        const oldPadding = oldDataSize % 2;
+        const newDataSize = newDataBytes.length;
+        const newPadding = newDataSize % 2;
+
+        const estimatedSize = originalBytes.length
+            - oldDataSize - oldPadding
+            + newDataSize + newPadding
+            + 8;
+
+        const output = new Uint8Array(estimatedSize);
+        const outView = new DataView(output.buffer);
+
+        output.set(originalBytes.subarray(0, 4), 0); // "RIFF"
+        output.set(originalBytes.subarray(8, 12), 8); // "WAVE"
+        let writeOffset = 12;
+
+        for (const chunk of chunks) {
+            if (chunk.id === 'data') {
+                output.set(originalBytes.subarray(chunk.offset, chunk.offset + 4), writeOffset);
+                writeOffset += 4;
+                outView.setUint32(writeOffset, newDataSize, true);
+                writeOffset += 4;
+                output.set(newDataBytes, writeOffset);
+                writeOffset += newDataSize;
+                if (newPadding === 1) {
+                    output[writeOffset] = 0;
+                    writeOffset += 1;
+                }
+            } else {
+                const chunkTotalLen = 8 + chunk.size + (chunk.size % 2);
+                output.set(originalBytes.subarray(chunk.offset, chunk.offset + chunkTotalLen), writeOffset);
+                writeOffset += chunkTotalLen;
+            }
+        }
+
+        outView.setUint32(4, writeOffset - 8, true);
+
+        return output.buffer.slice(0, writeOffset);
+    }
+
+    /* ---------- UI ---------- */
+
+    function formatBytes(n) {
+        if (n < 1024) return n + ' B';
+        if (n < 1024 * 1024) return (n / 1024).toFixed(2) + ' KB';
+        if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(2) + ' MB';
+        return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+    }
+
+    function formatDuration(sec) {
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = (sec % 60).toFixed(3);
+        return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(6, '0')}`;
+    }
+
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, ch => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[ch]));
+    }
+
+    function renderFileInfo(fmt, dataChunk, originalBytes, fileSize) {
+        const actualDataBytes = originalBytes.subarray(dataChunk.dataStart, dataChunk.dataStart + dataChunk.size);
+
+        const t0 = performance.now();
+        const countInfo = countSamplesByLoop(actualDataBytes, fmt.blockAlign);
+        const t1 = performance.now();
+
+        const headerBasedSamples = dataChunk.size / fmt.blockAlign; // 参考値（ヘッダーベースの理論値）
+        const mismatchWithHeader = (headerBasedSamples !== countInfo.count) || dataChunk.sizeMismatch;
+
+        const durationSec = countInfo.count / fmt.sampleRate;
+        const formatName = fmt.realFormat === 3 ? 'IEEE Float' : 'PCM (整数)';
+
+        log(`サンプル数を実カウント: ${countInfo.count.toLocaleString()}サンプル（${countInfo.scannedBytes.toLocaleString()} byte走査, ${(t1 - t0).toFixed(1)}ms）`);
+        if (countInfo.remainderBytes !== 0) {
+            log(`警告: 末尾に${countInfo.remainderBytes}byteの不完全なフレームが存在します。`, true);
+        }
+        if (dataChunk.sizeMismatch) {
+            log(`警告: dataチャンクのヘッダー記載サイズ(${dataChunk.declaredSize.toLocaleString()} byte)と実際のファイルサイズが不一致でした。`, true);
+        }
+
+        fileInfoEl.hidden = false;
+        fileInfoEl.innerHTML = `
+            <div class="row"><span class="k">ファイル名</span><span class="v">${escapeHtml(currentFileName)}</span></div>
+            <div class="row"><span class="k">ファイルサイズ</span><span class="v">${formatBytes(fileSize)}</span></div>
+            <div class="row"><span class="k">フォーマット</span><span class="v">${formatName}</span></div>
+            <div class="row"><span class="k">ビット深度</span><span class="v">${fmt.bitsPerSample} bit</span></div>
+            <div class="row"><span class="k">チャンネル数</span><span class="v">${fmt.numChannels}</span></div>
+            <div class="row"><span class="k">サンプルレート</span><span class="v">${fmt.sampleRate} Hz</span></div>
+            <div class="row"><span class="k">ブロックアライン</span><span class="v">${fmt.blockAlign} byte/フレーム</span></div>
+            <div class="row"><span class="k">dataヘッダー記載サイズ</span><span class="v ${dataChunk.sizeMismatch ? 'warn' : ''}">${dataChunk.declaredSize.toLocaleString()} byte</span></div>
+            <div class="row"><span class="k">実際に読めたサイズ</span><span class="v">${dataChunk.size.toLocaleString()} byte</span></div>
+            <div class="row"><span class="k">総サンプル数（実カウント）</span><span class="v ${mismatchWithHeader ? 'warn' : 'ok'}">${countInfo.count.toLocaleString()}</span></div>
+            <div class="row"><span class="k">末尾の余りバイト</span><span class="v ${countInfo.remainderBytes !== 0 ? 'warn' : ''}">${countInfo.remainderBytes} byte</span></div>
+            <div class="row"><span class="k">再生時間</span><span class="v">${formatDuration(durationSec)}</span></div>
+        `;
+
+        return countInfo;
+    }
+
+    fileInput.addEventListener('change', () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+
+        currentFileName = file.name || 'audio.wav';
+        fileLabelText.textContent = currentFileName;
+        resultBox.hidden = true;
+        hashResultEl.hidden = true;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                originalArrayBuffer = e.target.result;
+                parsedWav = parseWav(originalArrayBuffer);
+                const originalBytes = new Uint8Array(originalArrayBuffer);
+                renderFileInfo(parsedWav.fmt, parsedWav.dataChunk, originalBytes, originalArrayBuffer.byteLength);
+                controlsEl.hidden = false;
+                log(`読み込み成功: ${currentFileName} (${formatBytes(originalArrayBuffer.byteLength)})`);
+                log(`検出フォーマット: ${parsedWav.fmt.realFormat === 3 ? 'IEEE Float' : 'PCM'} / ${parsedWav.fmt.bitsPerSample}bit / ${parsedWav.fmt.numChannels}ch / ${parsedWav.fmt.sampleRate}Hz`);
+            } catch (err) {
+                controlsEl.hidden = true;
+                fileInfoEl.hidden = true;
+                log('エラー: ' + err.message, true);
+                alert('WAVファイルの解析に失敗しました:\n' + err.message);
+            }
+        };
+        reader.onerror = () => {
+            log('ファイル読み込みエラー', true);
+            alert('ファイルの読み込みに失敗しました。');
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    processBtn.addEventListener('click', () => {
+        if (!originalArrayBuffer || !parsedWav) {
+            alert('先にWAVファイルを選択してください。');
+            return;
+        }
+
+        const operation = document.querySelector('input[name="op"]:checked').value;
+        const position = document.querySelector('input[name="pos"]:checked').value;
+        const sampleCount = parseInt(sampleCountInput.value, 10);
+
+        try {
+            processBtn.disabled = true;
+            processBtn.textContent = '処理中…';
+
+            const fmt = parsedWav.fmt;
+            const dataChunk = parsedWav.dataChunk;
+            const originalBytes = new Uint8Array(originalArrayBuffer);
+            const originalDataBytes = originalBytes.subarray(dataChunk.dataStart, dataChunk.dataStart + dataChunk.size);
+
+            const silenceByte = getSilenceByteValue(fmt);
+
+            const oldCountInfo = countSamplesByLoop(originalDataBytes, fmt.blockAlign);
+
+            const t0 = performance.now();
+            const newDataBytes = buildNewDataBytes(originalDataBytes, fmt.blockAlign, silenceByte, operation, position, sampleCount);
+            const newFileBuffer = buildWavFile(originalArrayBuffer, parsedWav, newDataBytes);
+            const t1 = performance.now();
+
+            const newCountInfo = countSamplesByLoop(newDataBytes, fmt.blockAlign);
+
+            lastOutputBuffer = newFileBuffer;
+
+            resultBox.hidden = false;
+            hashResultEl.hidden = true;
+            resultInfoEl.innerHTML = `
+                <div class="row"><span class="k">操作</span><span class="v">${operation === 'insert' ? '無音を追加' : 'サンプルを削除'}（${position}）</span></div>
+                <div class="row"><span class="k">サンプル数指定</span><span class="v">${sampleCount} / 端</span></div>
+                <div class="row"><span class="k">総サンプル数（実カウント）</span><span class="v">${oldCountInfo.count.toLocaleString()} → ${newCountInfo.count.toLocaleString()}</span></div>
+                <div class="row"><span class="k">出力ファイルサイズ</span><span class="v">${formatBytes(newFileBuffer.byteLength)}</span></div>
+                <div class="row"><span class="k">処理時間</span><span class="v">${(t1 - t0).toFixed(1)} ms</span></div>
+            `;
+
+            const blob = new Blob([newFileBuffer], { type: 'audio/wav' });
+            const url = URL.createObjectURL(blob);
+            const baseName = currentFileName.replace(/\.wav$/i, '');
+            const suffix = operation === 'insert' ? `_ins${sampleCount}_${position}` : `_rm${sampleCount}_${position}`;
+            downloadLink.href = url;
+            downloadLink.download = `${baseName}${suffix}.wav`;
+
+            log(`処理完了: ${operation} / ${position} / ${sampleCount}サンプル → 実カウント ${oldCountInfo.count.toLocaleString()} → ${newCountInfo.count.toLocaleString()} / 出力 ${formatBytes(newFileBuffer.byteLength)}`);
+        } catch (err) {
+            log('処理エラー: ' + err.message, true);
+            alert('処理に失敗しました:\n' + err.message);
+        } finally {
+            processBtn.disabled = false;
+            processBtn.textContent = '処理を実行';
+        }
+    });
+
+    async function sha256Hex(buffer) {
+        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+        return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    hashBtn.addEventListener('click', async () => {
+        if (!originalArrayBuffer || !lastOutputBuffer) {
+            alert('比較には元ファイルと処理結果の両方が必要です。');
+            return;
+        }
+        hashBtn.disabled = true;
+        hashBtn.textContent = '計算中…';
+        try {
+            const [origHash, outHash] = await Promise.all([
+                sha256Hex(originalArrayBuffer),
+                sha256Hex(lastOutputBuffer)
+            ]);
+            const same = (origHash === outHash);
+            hashResultEl.hidden = false;
+            hashResultEl.innerHTML = `
+                <div class="row"><span class="k">元ファイル SHA-256</span><span class="v">${origHash}</span></div>
+                <div class="row"><span class="k">出力ファイル SHA-256</span><span class="v">${outHash}</span></div>
+                <div class="row"><span class="k">判定</span><span class="v ${same ? 'ok-text' : 'error-text'}">${same ? '完全一致（ロスレス）' : '不一致（サンプル数が異なる場合は当然不一致になります）'}</span></div>
+            `;
+            log(`SHA-256比較: 元=${origHash.slice(0,16)}... 出力=${outHash.slice(0,16)}... 結果=${same ? '一致' : '不一致'}`);
+        } catch (err) {
+            log('ハッシュ計算エラー: ' + err.message, true);
+        } finally {
+            hashBtn.disabled = false;
+            hashBtn.textContent = '元ファイルとSHA-256を比較検証';
+        }
+    });
+
+})();
+</script>
+</body>
+</html>
